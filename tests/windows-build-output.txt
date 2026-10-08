@@ -1,0 +1,34 @@
+
+> bcis-subscription-billing@1.0.0 dist:win
+> npm run build && electron-builder --win nsis --x64
+
+
+> bcis-subscription-billing@1.0.0 build
+> tsc --noEmit && vite build && esbuild source/electron/main.ts source/electron/preload.ts --bundle --platform=node --external:electron --outdir=release/electron --format=cjs --out-extension:.js=.cjs
+
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 1579 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.68 kB │ gzip:  0.43 kB
+dist/assets/index-Bb_LUZRk.css   17.26 kB │ gzip:  4.60 kB
+dist/assets/index-BqHCYdJY.js   283.67 kB │ gzip: 85.34 kB
+✓ built in 1.38s
+  • electron-builder  version=26.15.3 os=25.3.0
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=44.5.1 arch=x64 buildFromSource=false workspaceRoot=/Users/user/Desktop/Act4 projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=44.5.1 appOutDir=release/installers/win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=/Users/user/Desktop/Act4/release/installers/win-unpacked
+  • searching for node modules  pm=npm searchDir=/Users/user/Desktop/Act4
+  • duplicate dependency references  dependencies=["pg-types@2.2.0","pg@8.23.1","once@1.4.0","readable-stream@3.6.2","readable-stream@3.6.2","once@1.4.0","readable-stream@3.6.2","glob@7.2.3","lazystream@1.0.1","readable-stream@3.6.2","readable-stream@3.6.2","readable-stream@3.6.2","readable-stream@3.6.2","glob@7.2.3","ajv@8.20.0","fast-json-stringify@7.0.1","ajv-formats@3.0.1","ajv@8.20.0","unicode-trie@2.0.0","unicode-trie@2.0.0","pg@8.23.1"]
+  • updating asar integrity executable resource  executablePath=release/installers/win-unpacked/BCIS Billing.exe
+  • executable resource editing and code signing skipped — signAndEditExecutable is false. To skip only code signing while keeping icon and metadata applied, use signExecutable: false instead.  exe=release/installers/win-unpacked/BCIS Billing.exe
+  • building        target=nsis file=release/installers/BCIS Billing Setup 1.0.0.exe archs=x64 oneClick=false perMachine=false
+  • default Electron icon is used  reason=application icon is not set
+  • signing with signtool.exe  path=release/installers/BCIS Billing Setup 1.0.0.__uninstaller.exe
+  • signing with signtool.exe  path=release/installers/BCIS Billing Setup 1.0.0.exe
+  • building block map  blockMapFile=release/installers/BCIS Billing Setup 1.0.0.exe.blockmap

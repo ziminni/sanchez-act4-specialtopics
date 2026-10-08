@@ -1,0 +1,20 @@
+{
+  "test": "AT-12",
+  "status": "PASS",
+  "backup": "bcis-2026-10-08T17-11-21.939Z-f0748936",
+  "sha256": "925d47cf7adaa2f7abb6190559a2ef5fd07e2e6e4afcb22b3ea430fa485b6406",
+  "restoredDatabase": "bcis_restore_1791479481877",
+  "sourceSubscribers": 50,
+  "restoredSubscribers": 50,
+  "attachmentChecksums": 1,
+  "checks": [
+    "archive and attachment checksums",
+    "pg_restore transaction",
+    "foreign keys",
+    "nonnegative invoice balances",
+    "subscriber/invoice/payment/allocation counts",
+    "post-backup mutation absent from restored snapshot",
+    "session invalidation"
+  ],
+  "time": "2026-10-08T17:11:22.677Z"
+}

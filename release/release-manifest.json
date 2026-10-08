@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "platform": "Windows x64",
+  "installer": "release/installers/BCIS Billing Setup 1.0.0.exe",
+  "bytes": 122231563,
+  "sha256": "6d57f9b7538e5ace1587ba38d44f9dcc484a539cd416cfb48c64504589618163",
+  "signed": false,
+  "builtAt": "2026-10-08T17:17:50.594Z",
+  "validation": {
+    "domainTests": 9,
+    "postgresApiTests": 18,
+    "browser": "PASS",
+    "electronMacOS": "PASS",
+    "backupRestore": "PASS",
+    "windowsInstallation": "NOT_EXECUTED",
+    "threePhysicalWindowsClients": "NOT_EXECUTED",
+    "largeDatasetBenchmark": "NOT_EXECUTED"
+  }
+}

@@ -1,0 +1,26 @@
+erDiagram
+ users ||--o{ user_roles : has
+ roles ||--o{ user_roles : grants
+ roles ||--o{ role_permissions : contains
+ permissions ||--o{ role_permissions : defines
+ users ||--o{ sessions : authenticates
+ subscribers ||--o{ service_accounts : owns
+ service_plans ||--o{ service_accounts : configures
+ service_accounts ||--o{ invoices : bills
+ invoices ||--o{ invoice_items : contains
+ invoices ||--o{ adjustments : corrects
+ invoices ||--o{ payment_allocations : receives
+ payments ||--o{ payment_allocations : allocates
+ subscribers ||--o{ payments : pays
+ payments ||--o| payment_reversals : reverses
+ payment_proofs ||--o| payments : verifies
+ collectors ||--o{ collection_batches : collects
+ collection_areas ||--o{ collection_batches : routes
+ collection_batches ||--o{ batch_accounts : assigns
+ subscribers ||--o{ batch_accounts : visits
+ collection_batches ||--o| collector_remittances : reconciles
+ collection_batches ||--o{ payments : records
+ service_accounts ||--o{ service_events : tracks
+ service_accounts ||--o{ suspension_records : suspends
+ service_accounts ||--o{ reconnection_records : reconnects
+ users ||--o{ audit_logs : records

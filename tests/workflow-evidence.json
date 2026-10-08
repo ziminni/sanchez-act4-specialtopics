@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "time": "2026-10-08T17:14:50.316Z",
+  "checks": [
+    "PNG proof upload",
+    "authorized verification atomically posts GCash",
+    "posted payment visible on subscriber ledger",
+    "field collection posted to assigned batch",
+    "500 peso shortage retained after reconciliation"
+  ],
+  "receipt": "RCPT-00000039"
+}

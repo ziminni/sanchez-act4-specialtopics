@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "platform": "darwin",
+  "checks": [
+    "packaged renderer login through IPC",
+    "dashboard",
+    "sandbox/contextIsolation",
+    "no renderer Node API",
+    "binary proof preview through IPC",
+    "PDF report download through IPC"
+  ],
+  "security": {
+    "nodeIntegration": false,
+    "contextIsolation": true,
+    "sandbox": true
+  },
+  "time": "2026-10-08T17:15:04.068Z"
+}

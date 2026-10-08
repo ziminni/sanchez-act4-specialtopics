@@ -1,0 +1,3 @@
+# BCIS development rules
+
+Treat the PDF as the product specification. Never expose PostgreSQL to renderer code. Enforce role permissions on every protected server route. Parse monetary input to integer centavos. Financial posting must be atomic and lock the subscriber before allocation. Preserve finalized invoices, receipts and payment facts; correct with audited adjustments/reversals. Do not commit .env, proof data, database files, passwords or production data. Every schema change is a new migration. Run strict typecheck, financial tests and relevant integration tests. Do not claim Windows, LAN, backup or scale tests were run without retained evidence. Use synthetic data for demos.

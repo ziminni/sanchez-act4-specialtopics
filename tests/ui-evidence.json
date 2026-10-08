@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "time": "2026-10-08T17:15:00.908Z",
+  "screens": 10,
+  "checks": [
+    "login",
+    "navigation including return from audit",
+    "subscriber ledger",
+    "payment preview",
+    "no browser exceptions"
+  ]
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+storage/
+release/electron/
+release/installers/
+*.log
+test-results/
+
+tests/electron-report-download.pdf
+tests/screenshots/debug-subscriber.png

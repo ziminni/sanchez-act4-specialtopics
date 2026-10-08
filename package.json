@@ -1,0 +1,83 @@
+{
+  "name": "bcis-subscription-billing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "release/electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"tsx watch source/server/index.ts\" \"vite --host 127.0.0.1\"",
+    "server": "tsx source/server/index.ts",
+    "migrate": "tsx database/migrate.ts",
+    "seed": "tsx database/seeds/demo.ts",
+    "build": "tsc --noEmit && vite build && esbuild source/electron/main.ts source/electron/preload.ts --bundle --platform=node --external:electron --outdir=release/electron --format=cjs --out-extension:.js=.cjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "desktop": "node scripts/launch-desktop.mjs",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "restore": "tsx scripts/restore.ts",
+    "test:db": "RUN_DB_TESTS=1 vitest run tests/integration.test.ts",
+    "dev:db": "tsx scripts/local-db.ts",
+    "lint": "tsc --noEmit",
+    "format": "prettier --write source database scripts tests/*.ts vite.config.ts",
+    "format:check": "prettier --check source database scripts tests/*.ts vite.config.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "@fastify/multipart": "^9.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "dotenv": "^16.0.0",
+    "drizzle-orm": "^0.45.4",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.0.0",
+    "lucide-react": "^0.468.0",
+    "pdfkit": "^0.17.0",
+    "pg": "^8.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@types/pdfkit": "^0.17.0",
+    "@types/pg": "^8.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.0.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.0",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^5.0.3"
+  },
+  "build": {
+    "appId": "ph.bcis.billing",
+    "productName": "BCIS Billing",
+    "directories": {
+      "output": "release/installers"
+    },
+    "files": [
+      "dist/**/*",
+      "release/electron/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "description": "BCIS subscription billing, collection, ledger and receivables desktop system",
+  "author": "BCIS Laboratory",
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
+  }
+}

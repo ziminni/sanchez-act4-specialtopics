@@ -1,0 +1,12 @@
+
+> bcis-subscription-billing@1.0.0 test
+> vitest run
+
+
+ RUN  v5.0.3 /Users/user/Desktop/Act4
+
+
+ Test Files  1 passed | 1 skipped (2)
+      Tests  9 passed | 18 skipped (27)
+   Start at  01:14:07
+   Duration  775ms (import 79%, transform 15%, tests 5%, worker 1%)
