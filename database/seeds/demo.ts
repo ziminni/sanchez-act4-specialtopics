@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { pool, transaction, audit } from "../../source/server/db.js";
-import { hashPassword } from "../../source/server/auth.js";
+import { hashPassword } from "../../source/server/services/auth.js";
 import { rolePermissions } from "../../source/shared/domain.js";
 import {
   generateBilling,
   postPayment,
   reversePayment,
-} from "../../source/server/finance.js";
+} from "../../source/server/services/finance.js";
 const password = process.env.SEED_PASSWORD;
 if (!password || password.length < 12)
   throw new Error(

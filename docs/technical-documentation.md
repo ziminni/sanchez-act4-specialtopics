@@ -6,18 +6,33 @@ The three office PCs run Electron clients. A central Fastify API is the only app
 
 ## Source map
 
-source/server/app.ts: HTTP routes, Zod validation, authorization and workflow orchestration.
-source/server/finance.ts: row locks, billing, payment allocation, reversal, ledger reconstruction.
-source/server/db.ts: PostgreSQL pool, transaction wrapper, Drizzle connection, audit insert helper.
-source/server/auth.ts: salted scrypt password hashing and hashed session tokens.
-source/server/reports.ts: report queries and PDF/XLSX rendering.
-source/server/backup.ts: archive creation, attachment snapshot and manifest verification.
-source/shared/domain.ts: exact decimal parsing, allocation, aging and role permission seed.
-source/shared/bridge.ts: renderer-to-main request/response contract.
-source/electron/: isolated Electron main and preload.
-source/ui/: connected React screens and visual design tokens.
-database/migrations/: versioned schema, indexes and immutable-history triggers.
-scripts/: local database, restore drill, UI/workflow checks, deliverable generation.
+Server (`source/server/`):
+
+- `index.ts`: process entry; starts the API.
+- `app.ts`: builds the Fastify app (plugins, error handler) and registers every route module.
+- `db.ts`: PostgreSQL pool, transaction wrapper, Drizzle connection, audit insert helper.
+- `http/`: request plumbing shared by all routes. `route-context.ts` (session check and per-route permission guard), `error-handler.ts`, `schemas.ts` (shared Zod validators), `access.ts` (hides amounts from non-finance roles).
+- `routes/`: one module per domain: `session`, `subscribers`, `services`, `field`, `billing`, `payments`, `proofs`, `collections`, `ledger`, `reports`, `audit`, `system`, `users`, `settings`, `backups`.
+- `services/`: domain logic used by routes. `finance.ts` (row locks, billing, payment allocation, reversal, ledger reconstruction), `auth.ts` (salted scrypt passwords, hashed session tokens), `reports.ts` (report queries, PDF/XLSX rendering), `backup.ts` (archive, attachment snapshot, manifest verification), `identifiers.ts`, `security-audit.ts`, `system-profile.ts`.
+
+UI (`source/ui/`):
+
+- `main.tsx` / `App.tsx`: entry point; shows the sign-in page or the workspace.
+- `app/`: `useAppState.ts` (session, current page, page data, dialogs and shared actions), `AppContext.tsx` (`useApp()` hook), `pages.tsx` (page registry: sidebar label → page component and header actions).
+- `api/client.ts`: HTTP/Electron bridge requests and the session token.
+- `layout/`: `AppShell`, `Sidebar` (role menus), `Topbar`, `PageHeading`, `ModalHost` (dialog frame and routing).
+- `pages/<category>/`: one file per page, grouped like the sidebar: `overview`, `customers`, `billing`, `collections`, `accounts`, `audit`, `field`, `system`, `auth`. Helpers shared within a category live in its `shared.tsx`.
+- `dialogs/<domain>/`: one file per dialog (subscriber, plan, service, billing, payment, receipt, correction, collection, user).
+- `components/`: reusable UI pieces (`Table`, `Badge`, `Field`, `ListPanel`, `SubscriberPicker`).
+- `lib/`: formatting, theme and shared types.
+
+Other:
+
+- `source/shared/domain.ts`: exact decimal parsing, allocation, aging and role permission seed.
+- `source/shared/bridge.ts`: renderer-to-main request/response contract.
+- `source/electron/`: isolated Electron main and preload.
+- `database/migrations/`: versioned schema, indexes and immutable-history triggers.
+- `scripts/`: local database, restore drill, UI/workflow checks, deliverable generation.
 
 ## Data dictionary
 

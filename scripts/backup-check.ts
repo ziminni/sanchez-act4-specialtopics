@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createBackup } from "../source/server/backup";
+import { createBackup } from "../source/server/services/backup";
 import { pool, transaction, audit } from "../source/server/db";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import PDFDocument from "pdfkit";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { exportReport } from "../source/server/reports";
+import { exportReport } from "../source/server/services/reports";
 import { pool } from "../source/server/db";
 async function document(input: string, output: string) {
   const text = await readFile(input, "utf8");

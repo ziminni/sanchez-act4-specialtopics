@@ -9,9 +9,9 @@ import {
   postPayment,
   reversePayment,
   ledger,
-} from "../source/server/finance";
+} from "../source/server/services/finance";
 import { buildApp } from "../source/server/app";
-import { hashPassword } from "../source/server/auth";
+import { hashPassword } from "../source/server/services/auth";
 import { rolePermissions } from "../source/shared/domain";
 const enabled = process.env.RUN_DB_TESTS === "1";
 describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
