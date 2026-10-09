@@ -56,3 +56,7 @@ The payment subscriber field now presents a dropdown of partial-name/account mat
 ### Editable generated subscriber account number
 
 New subscriber now requests a sequence-generated suggestion before opening the form. The visible account number is editable and the server saves the submitted value. Duplicate numbers remain rejected by the database unique constraint. Cancelled forms may leave gaps in the sequence. TypeScript validation and all 20 database integration tests passed, including concurrent generation, saving suggested/custom numbers and duplicate rejection. A Chrome check confirmed the generated value is visible and editable.
+
+### Locked generated identifiers (supersedes editable account behavior)
+
+Subscriber account numbers, service account numbers and plan codes are generated before their forms open and shown in disabled gray fields. Server-side, actor-bound, single-use reservations preserve the displayed ID on save; client-supplied account numbers/codes are ignored. Editing subscribers or plans preserves existing identifiers. Receipt/invoice/batch IDs remain generated; external payment references and selection of existing batch IDs retain their existing meaning. All 20 database tests passed, covering displayed-ID preservation, override protection, edit protection, token reuse and wrong-kind rejection. `scripts/generated-id-check.ts` checks disabled gray fields in Chrome. Cancelled forms can leave numbering gaps.

@@ -1432,3 +1432,13 @@ footer {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+
+input.generated-id:disabled {
+  background: #edf0f3;
+  color: #64748b;
+  border-color: #d8dee6;
+  cursor: default;
+  pointer-events: none;
+  opacity: 1;
+  -webkit-text-fill-color: #64748b;
+}

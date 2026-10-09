@@ -1,3 +1,4 @@
+import { reserveIdentifier, consumeIdentifier } from "./identifiers.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -211,15 +212,19 @@ export async function buildApp() {
       ),
     };
   });
-  post("/subscribers/account-number", "subscriber.edit", async () => {
-    return (
-      await pool.query("SELECT next_subscriber_account_no() AS account_no")
-    ).rows[0];
-  });
+  for (const [path, kind] of [
+    ["subscribers", "subscriber"],
+    ["services", "service"],
+    ["plans", "plan"],
+  ] as const) {
+    post(`/${path}/account-number`, "subscriber.edit", async (req: any) =>
+      transaction((db) => reserveIdentifier(db, kind, req.actor.id)),
+    );
+  }
   post("/subscribers", "subscriber.edit", async (req: any) => {
     const b = z
       .object({
-        accountNo: text.optional(),
+        identifierToken: z.uuid().optional(),
         name: text,
         contact: z.string().max(50),
         address: text,
@@ -243,7 +248,12 @@ export async function buildApp() {
             b.billingDay,
             b.dueDay,
             b.notes,
-            b.accountNo ?? null,
+            await consumeIdentifier(
+              db,
+              "subscriber",
+              req.actor.id,
+              b.identifierToken,
+            ),
           ],
         )
       ).rows[0];
@@ -286,7 +296,6 @@ export async function buildApp() {
   post("/subscribers/:id/edit", "subscriber.edit", async (req: any) => {
     const b = z
       .object({
-        accountNo: text,
         name: text,
         contact: z.string().max(50),
         address: text,
@@ -306,7 +315,7 @@ export async function buildApp() {
         await db.query(
           "UPDATE subscribers SET account_no=$1,name=$2,contact=$3,address=$4,area_id=$5,collector_id=$6,billing_day=$7,due_day=$8,notes=$9 WHERE id=$10 RETURNING *",
           [
-            b.accountNo,
+            old.account_no,
             b.name,
             b.contact,
             b.address,
@@ -329,7 +338,6 @@ export async function buildApp() {
   post("/plans/:id/edit", "subscriber.edit", async (req: any) => {
     const b = z
       .object({
-        code: text,
         name: text,
         type: z.enum(["Internet", "Cable", "Combo"]),
         price: amount,
@@ -351,7 +359,7 @@ export async function buildApp() {
         await db.query(
           "UPDATE service_plans SET code=$1,name=$2,type=$3,price=$4,fee=$5,speed=$6,channels=$7,description=$8,active=$9 WHERE id=$10 RETURNING *",
           [
-            b.code,
+            old.code,
             b.name,
             b.type,
             b.price,
@@ -463,7 +471,7 @@ export async function buildApp() {
   post("/plans", "subscriber.edit", async (req: any) => {
     const b = z
       .object({
-        code: text,
+        identifierToken: z.uuid().optional(),
         name: text,
         type: z.enum(["Internet", "Cable", "Combo"]),
         price: amount,
@@ -478,7 +486,12 @@ export async function buildApp() {
         await db.query(
           "INSERT INTO service_plans(code,name,type,price,speed,channels,fee,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
           [
-            b.code,
+            await consumeIdentifier(
+              db,
+              "plan",
+              req.actor.id,
+              b.identifierToken,
+            ),
             b.name,
             b.type,
             b.price,
@@ -498,7 +511,7 @@ export async function buildApp() {
       .object({
         subscriberId: id,
         planId: id,
-        accountNo: text,
+        identifierToken: z.uuid().optional(),
         address: text,
         rate: amount,
         activationDate: z.iso.date(),
@@ -514,7 +527,12 @@ export async function buildApp() {
           [
             b.subscriberId,
             b.planId,
-            b.accountNo,
+            await consumeIdentifier(
+              db,
+              "service",
+              req.actor.id,
+              b.identifierToken,
+            ),
             b.address,
             b.rate,
             b.activationDate,

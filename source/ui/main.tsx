@@ -221,6 +221,7 @@ function App() {
     [pageNo, setPageNo] = useState(1),
     [modal, setModal] = useState(""),
     [suggestedAccountNo, setSuggestedAccountNo] = useState(""),
+    [identifierToken, setIdentifierToken] = useState(""),
     [profile, setProfile] = useState<Row | null>(null),
     [tab, setTab] = useState("Overview"),
     [selected, setSelected] = useState<Row | null>(null),
@@ -327,6 +328,16 @@ function App() {
     setSelected(null);
     setError("");
   };
+  const openGeneratedForm = (kind: "service" | "plan") =>
+    run(async () => {
+      const suggestion = await api(
+        `/${kind === "service" ? "services" : "plans"}/account-number`,
+        {},
+      );
+      setSuggestedAccountNo(suggestion.account_no);
+      setIdentifierToken(suggestion.token);
+      setModal(kind);
+    });
   const openProfile = async (r: Row) =>
     run(async () => {
       setProfile(await api("/subscribers/" + r.id));
@@ -573,6 +584,7 @@ function App() {
                         {},
                       );
                       setSuggestedAccountNo(suggestion.account_no);
+                      setIdentifierToken(suggestion.token);
                       setModal("subscriber");
                     })
                   }
@@ -1789,6 +1801,7 @@ function App() {
                         : "/subscribers",
                       {
                         ...b,
+                        ...(modal === "subscriber" ? { identifierToken } : {}),
                         areaId: Number(b.areaId),
                         collectorId: Number(b.collectorId),
                         billingDay: Number(b.billingDay),
@@ -1807,20 +1820,14 @@ function App() {
                   <Field label="Account number *">
                     <input
                       name="accountNo"
-                      required
-                      maxLength={200}
+                      disabled
+                      className="generated-id"
                       defaultValue={
                         modal === "subscriber-edit"
                           ? profile?.subscriber.account_no
                           : suggestedAccountNo
                       }
                     />
-                    {modal === "subscriber" && (
-                      <small>
-                        A number is generated for you. You can change it before
-                        saving.
-                      </small>
-                    )}
                   </Field>
                   <Field label="Full name *">
                     <input
@@ -2385,13 +2392,22 @@ function App() {
               <form
                 onSubmit={(e) =>
                   submit(e, async (b) => {
-                    await api("/plans", { ...b, price: centavos(b.price) });
+                    await api("/plans", {
+                      ...b,
+                      identifierToken,
+                      price: centavos(b.price),
+                    });
                     await done("Service plan created.");
                   })
                 }
               >
                 <Field label="Code *">
-                  <input name="code" required />
+                  <input
+                    name="code"
+                    disabled
+                    className="generated-id"
+                    value={suggestedAccountNo}
+                  />
                 </Field>
                 <Field label="Plan name *">
                   <input name="name" required />
@@ -2417,6 +2433,7 @@ function App() {
                   submit(e, async (b) => {
                     await api("/services", {
                       ...b,
+                      identifierToken,
                       subscriberId: profile.subscriber.id,
                       planId: Number(b.planId),
                       rate: centavos(b.rate),
@@ -2427,7 +2444,12 @@ function App() {
                 }
               >
                 <Field label="Service account number *">
-                  <input name="accountNo" required />
+                  <input
+                    name="accountNo"
+                    disabled
+                    className="generated-id"
+                    value={suggestedAccountNo}
+                  />
                 </Field>
                 <Field label="Plan *">
                   <select name="planId">
@@ -2571,7 +2593,11 @@ function App() {
                     ],
                   ]}
                 />
-                <button className="primary" onClick={() => setModal("plan")}>
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => openGeneratedForm("plan")}
+                >
                   Create plan
                 </button>
               </>
@@ -2596,7 +2622,12 @@ function App() {
               >
                 <div className="form-grid">
                   <Field label="Code *">
-                    <input name="code" required defaultValue={selected.code} />
+                    <input
+                      name="code"
+                      disabled
+                      className="generated-id"
+                      defaultValue={selected.code}
+                    />
                   </Field>
                   <Field label="Name *">
                     <input name="name" required defaultValue={selected.name} />
@@ -2757,7 +2788,10 @@ function App() {
                       ]}
                     />
                     {can("subscriber.edit") && (
-                      <button onClick={() => setModal("service")}>
+                      <button
+                        disabled={busy}
+                        onClick={() => openGeneratedForm("service")}
+                      >
                         <Plus size={15} /> Add service
                       </button>
                     )}

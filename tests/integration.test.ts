@@ -415,7 +415,7 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       (await balance(sub)).find((i) => i.period === "2027-01-01").total,
     ).toBe("149900");
   });
-  it("automatically numbers concurrent subscriber registrations and accepts edited suggestions", async () => {
+  it("generates locked subscriber IDs and ignores client overrides", async () => {
     const area = (
       await pool.query(
         "INSERT INTO collection_areas(name) VALUES($1) RETURNING id",
@@ -474,22 +474,107 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
     expect(suggestions[0].json().account_no).not.toBe(
       suggestions[1].json().account_no,
     );
-    for (const accountNo of [
-      suggestions[0].json().account_no,
-      "CUSTOM-" + randomUUID(),
-    ]) {
-      const create = () =>
-        app.inject({
-          method: "POST",
-          url: "/api/subscribers",
-          headers: headers(),
-          payload: { ...payload, accountNo },
-        });
-      const saved = await create();
-      expect(saved.statusCode).toBe(200);
-      expect(saved.json().account_no).toBe(accountNo);
-      expect((await create()).statusCode).toBe(409);
-    }
+    const suggestion = suggestions[0].json();
+    const create = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/subscribers",
+        headers: headers(),
+        payload: {
+          ...payload,
+          accountNo: "TAMPERED",
+          identifierToken: suggestion.token,
+        },
+      });
+    const saved = await create();
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().account_no).toBe(suggestion.account_no);
+    expect((await create()).statusCode).toBe(400);
+    const edited = await app.inject({
+      method: "POST",
+      url: `/api/subscribers/${saved.json().id}/edit`,
+      headers: headers(),
+      payload: { ...payload, accountNo: "TAMPERED" },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().account_no).toBe(suggestion.account_no);
+    const planSuggestion = (
+      await app.inject({
+        method: "POST",
+        url: "/api/plans/account-number",
+        headers: headers(),
+        payload: {},
+      })
+    ).json();
+    const plan = await app.inject({
+      method: "POST",
+      url: "/api/plans",
+      headers: headers(),
+      payload: {
+        identifierToken: planSuggestion.token,
+        code: "TAMPERED",
+        name: "Generated test",
+        type: "Internet",
+        price: 99900,
+      },
+    });
+    expect(plan.statusCode).toBe(200);
+    expect(plan.json().code).toBe(planSuggestion.account_no);
+    const planEdit = await app.inject({
+      method: "POST",
+      url: `/api/plans/${plan.json().id}/edit`,
+      headers: headers(),
+      payload: {
+        code: "TAMPERED",
+        name: "Updated plan",
+        type: "Internet",
+        price: 99900,
+        fee: 0,
+        speed: null,
+        channels: null,
+        description: "",
+        active: true,
+      },
+    });
+    expect(planEdit.statusCode).toBe(200);
+    expect(planEdit.json().code).toBe(planSuggestion.account_no);
+    const serviceSuggestion = (
+      await app.inject({
+        method: "POST",
+        url: "/api/services/account-number",
+        headers: headers(),
+        payload: {},
+      })
+    ).json();
+    const servicePayload = {
+      identifierToken: serviceSuggestion.token,
+      accountNo: "TAMPERED",
+      subscriberId: saved.json().id,
+      planId: plan.json().id,
+      address: "Test",
+      rate: 99900,
+      activationDate: "2026-10-01",
+      billingStart: "2026-10-01",
+      dueDay: 15,
+    };
+    const wrongKind = await app.inject({
+      method: "POST",
+      url: "/api/services",
+      headers: headers(),
+      payload: {
+        ...servicePayload,
+        identifierToken: suggestions[1].json().token,
+      },
+    });
+    expect(wrongKind.statusCode).toBe(400);
+    const service = await app.inject({
+      method: "POST",
+      url: "/api/services",
+      headers: headers(),
+      payload: servicePayload,
+    });
+    expect(service.statusCode).toBe(200);
+    expect(service.json().account_no).toBe(serviceSuggestion.account_no);
   });
   it("generated numbers skip existing seeded accounts and do not truncate long numbers", async () => {
     const current = BigInt(

@@ -12,9 +12,9 @@ transforming...
 rendering chunks...
 computing gzip size...
 dist/index.html                   0.68 kB │ gzip:  0.43 kB
-dist/assets/index-YsIJiqbj.css   18.30 kB │ gzip:  4.81 kB
-dist/assets/index-CEKdEJZV.js   286.77 kB │ gzip: 86.38 kB
-✓ built in 1.44s
+dist/assets/index-C0tTa0Eq.css   18.46 kB │ gzip:  4.88 kB
+dist/assets/index-Qwtipz1H.js   287.02 kB │ gzip: 86.44 kB
+✓ built in 1.47s
   • electron-builder  version=26.15.3 os=25.3.0
   • loaded configuration  file=package.json ("build" field)
   • executing @electron/rebuild  electronVersion=44.5.1 arch=x64 buildFromSource=false workspaceRoot=/Users/user/Desktop/Act4 projectDir=./ appDir=./
