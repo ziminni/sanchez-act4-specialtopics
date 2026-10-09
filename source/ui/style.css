@@ -2026,3 +2026,97 @@ button.admin-stat {
     grid-template-columns: 1fr 1fr;
   }
 }
+.backup-workspace {
+  display: grid;
+  gap: 22px;
+}
+.backup-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.audit-metrics strong.backup-date {
+  font-size: 18px;
+  line-height: 1.5;
+}
+.backup-copy {
+  font-size: 12px;
+  color: #65768f;
+  line-height: 1.8;
+  margin: 14px 0 20px;
+}
+.backup-actions-grid .admin-note {
+  margin: 16px 0 0;
+}
+.backup-filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: 14px;
+  align-items: end;
+  padding: 0 20px 20px;
+}
+.backup-filters label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #50617a;
+}
+.backup-filters input,
+.backup-filters select,
+.backup-filters > button {
+  height: 42px;
+  width: 100%;
+}
+.backup-filename {
+  max-width: 290px;
+  overflow-wrap: anywhere;
+}
+.backup-detail {
+  width: min(720px, 95vw);
+}
+.backup-guide-title {
+  margin-top: 28px;
+  font-size: 15px;
+}
+.backup-steps {
+  padding-left: 22px;
+}
+.backup-steps li {
+  padding: 8px 0 8px 6px;
+  font-size: 12px;
+  color: #354b6b;
+}
+.backup-steps p {
+  color: #73839a;
+  line-height: 1.7;
+  margin: 7px 0 0;
+}
+.backup-command {
+  padding: 16px;
+  border-radius: 8px;
+  background: #f1f5fa;
+  margin: 16px 0;
+}
+.backup-command span {
+  display: block;
+  font-size: 11px;
+  color: #6c7f96;
+  margin-bottom: 10px;
+}
+.backup-command code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.7;
+}
+@media (max-width: 900px) {
+  .backup-actions-grid {
+    grid-template-columns: 1fr;
+  }
+  .backup-filters {
+    grid-template-columns: 1fr;
+  }
+  .backup-filename {
+    max-width: 220px;
+  }
+}

@@ -1,3 +1,6 @@
+import { mkdtemp, rm, appendFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { randomUUID } from "node:crypto";
 import { pool, transaction } from "../source/server/db";
@@ -333,6 +336,62 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
     expect(d).not.toHaveProperty("receivable");
     expect(d).not.toHaveProperty("collected");
     expect(Number.isFinite(Date.parse(d.checkedAt))).toBe(true);
+  });
+  it("backup verification detects tampering and records checks without restoring", async () => {
+    const previous = process.env.STORAGE_DIR;
+    const directory = await mkdtemp(path.join(tmpdir(), "bcis-backup-test-"));
+    process.env.STORAGE_DIR = directory;
+    try {
+      const h = { authorization: `Bearer ${adminToken}` };
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/backups",
+        headers: h,
+        payload: {},
+      });
+      expect(created.statusCode).toBe(200);
+      const rows = (
+        await app.inject({ method: "GET", url: "/api/backups", headers: h })
+      ).json();
+      const record = rows.find((r: any) => r.filename === created.json().name);
+      expect(record.created_by).toBeTruthy();
+      const verify = () =>
+        app.inject({
+          method: "POST",
+          url: `/api/backups/${record.id}/verify`,
+          headers: h,
+          payload: {},
+        });
+      const good = await verify();
+      expect(good.statusCode).toBe(200);
+      expect(good.json().ok).toBe(true);
+      expect(good.json().bytes).toBeGreaterThan(0);
+      await appendFile(
+        path.join(directory, "backups", record.filename, "database.dump"),
+        "tampered",
+      );
+      expect((await verify()).json().ok).toBe(false);
+      const history = (
+        await app.inject({ method: "GET", url: "/api/backups", headers: h })
+      ).json();
+      expect(
+        history.find((r: any) => r.id === record.id).verification_outcome,
+      ).toBe("FAILURE");
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/backups/${record.id}/verify`,
+            headers: { authorization: `Bearer ${cashToken}` },
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(403);
+    } finally {
+      if (previous === undefined) delete process.env.STORAGE_DIR;
+      else process.env.STORAGE_DIR = previous;
+      await rm(directory, { recursive: true, force: true });
+    }
   });
   it("AT-01 exact payment creates receipt and balanced ledger", async () => {
     const sub = await fixture();

@@ -35,6 +35,7 @@ const labels: Record<string, string> = {
   "user.create": "User account created",
   "user.status": "User access updated",
   "backup.create": "Backup created",
+  "backup.verify": "Backup verification",
   "system.settings.update": "System settings updated",
 };
 const timestamp = (value: string) =>

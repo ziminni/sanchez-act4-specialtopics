@@ -1,3 +1,4 @@
+import { BackupRestore } from "./BackupRestore";
 import { UserManagement } from "./UserManagement";
 import { AdminDashboard } from "./AdminDashboard";
 import { SecurityAudit } from "./SecurityAudit";
@@ -684,41 +685,7 @@ function App() {
               )}
               {page === "Security Audit" && <SecurityAudit request={api} />}
               {page === "Backup Restore" && (
-                <section className="panel report-card">
-                  <h2>Backup and recovery</h2>
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      run(async () => {
-                        const b = await api("/backups", {});
-                        setNotice(`Backup verified: ${b.name}`);
-                        await reload();
-                      })
-                    }
-                  >
-                    Create backup
-                  </button>
-                  <Table
-                    rows={rows}
-                    columns={[
-                      ["filename", "Backup"],
-                      ["status", "Status"],
-                    ]}
-                  />
-                  <h3>Restore a backup</h3>
-                  <p>
-                    Restore is performed offline on the server. Stop the
-                    application, restore a verified backup into an empty
-                    database and a new attachment folder, then update the server
-                    configuration and restart.
-                  </p>
-                  <p>Server command:</p>
-                  <code>
-                    npm run restore -- &lt;backup-directory&gt;
-                    &lt;empty-target-database-url&gt;
-                    &lt;new-attachment-directory&gt;
-                  </code>
-                </section>
+                <BackupRestore rows={rows} request={api} reload={reload} />
               )}
               {page === "System Settings" && (
                 <section className="panel report-card">

@@ -20,7 +20,7 @@ import {
 } from "./finance.js";
 import { rolePermissions, aging } from "../shared/domain.js";
 import { exportReport } from "./reports.js";
-import { createBackup } from "./backup.js";
+import { createBackup, verifyBackup } from "./backup.js";
 declare module "fastify" {
   interface FastifyRequest {
     actor: { id: number; name: string; permissions: string[]; roles: string[] };
@@ -1315,7 +1315,7 @@ export async function buildApp() {
       const rows = (
         await db.query(
           `SELECT a.id,a.created_at,a.action,a.entity,a.entity_id,a.reason,a.outcome,a.source_ip,a.request_id,u.name AS actor,u.username,
-        jsonb_strip_nulls(jsonb_build_object('username',a.new_value->>'username','role',a.new_value->>'role','active',a.new_value->'active','displayName',a.new_value->>'displayName','supportContact',a.new_value->>'supportContact','permission',a.new_value->>'permission','method',a.new_value->>'method','path',a.new_value->>'path','sha256',a.new_value->>'sha256')) AS details
+        jsonb_strip_nulls(jsonb_build_object('username',a.new_value->>'username','role',a.new_value->>'role','active',a.new_value->'active','displayName',a.new_value->>'displayName','supportContact',a.new_value->>'supportContact','permission',a.new_value->>'permission','method',a.new_value->>'method','path',a.new_value->>'path','sha256',a.new_value->>'sha256','message',a.new_value->>'message','attachments',a.new_value->'attachments','bytes',a.new_value->'bytes')) AS details
         FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 25 OFFSET $6`,
           [...values, (q.page - 1) * 25],
         )
@@ -1481,9 +1481,12 @@ export async function buildApp() {
     async () =>
       (
         await pool.query(
-          "SELECT * FROM backup_history ORDER BY id DESC LIMIT 30",
+          "SELECT b.*,u.name AS created_by,v.created_at AS verified_at,v.outcome AS verification_outcome,v.new_value AS verification FROM backup_history b LEFT JOIN users u ON u.id=b.actor_id LEFT JOIN LATERAL (SELECT created_at,outcome,new_value FROM audit_logs WHERE action='backup.verify' AND entity_id=b.id::text ORDER BY id DESC LIMIT 1) v ON true ORDER BY b.id DESC LIMIT 30",
         )
       ).rows,
+  );
+  post("/backups/:id/verify", "backup.restore", async (req: any) =>
+    verifyBackup(id.parse(req.params.id), req.actor.id),
   );
   post("/backups", "backup.restore", async (req: any) =>
     createBackup(req.actor.id),

@@ -23,6 +23,7 @@ const events: Record<string, string> = {
   "user.create": "User created",
   "user.status": "User access updated",
   "backup.create": "Backup created",
+  "backup.verify": "Backup verification",
   "system.settings.update": "System settings updated",
 };
 export function AdminDashboard({
