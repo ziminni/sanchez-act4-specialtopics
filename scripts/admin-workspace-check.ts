@@ -25,14 +25,17 @@ try {
   ];
   await expect(page.locator("nav button")).toHaveText(sections);
   await expect(
-    page.getByText("Database: Connected", { exact: true }),
+    page.getByText("API responding · Database connected", { exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: "tests/screenshots/admin-system-dashboard.png",
     fullPage: true,
   });
   for (const section of sections.slice(1)) {
-    await page.getByRole("button", { name: section, exact: true }).click();
+    await page
+      .locator("nav")
+      .getByRole("button", { name: section, exact: true })
+      .click();
     await page.getByRole("heading", { name: section, exact: true }).waitFor();
     await expect(page.getByText("Connecting to your workspace…")).toHaveCount(
       0,

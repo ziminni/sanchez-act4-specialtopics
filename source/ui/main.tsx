@@ -1,3 +1,4 @@
+import { AdminDashboard } from "./AdminDashboard";
 import { SecurityAudit } from "./SecurityAudit";
 import React, { useState, useEffect, useCallback, useId } from "react";
 import { createRoot } from "react-dom/client";
@@ -678,31 +679,7 @@ function App() {
           ) : (
             <>
               {page === "Dashboard" && systemAdmin && (
-                <>
-                  <div className="kpis">
-                    {[
-                      ["User accounts", data.users],
-                      ["Active users", data.active_users],
-                      ["Active sessions", data.sessions],
-                      ["Backups", data.backups],
-                    ].map(([label, value]) => (
-                      <div className="kpi" key={label}>
-                        <div>{label}</div>
-                        <strong>{value}</strong>
-                      </div>
-                    ))}
-                  </div>
-                  <section className="panel report-card">
-                    <h2>System status</h2>
-                    <p>Database: {data.database}</p>
-                    <p>
-                      Latest backup:{" "}
-                      {data.latestBackup
-                        ? `${data.latestBackup.filename} · ${data.latestBackup.status}`
-                        : "No backups recorded"}
-                    </p>
-                  </section>
-                </>
+                <AdminDashboard data={data} navigate={navigate} />
               )}
               {page === "Security Audit" && <SecurityAudit request={api} />}
               {page === "Backup Restore" && (

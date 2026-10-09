@@ -300,6 +300,29 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       ).statusCode,
     ).toBe(403);
   });
+  it("system dashboard exposes consistent administration metrics without business data", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/system/dashboard",
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const d = response.json();
+    expect(d.trend).toHaveLength(7);
+    expect(d.active_users).toBeLessThanOrEqual(d.users);
+    expect(d.signed_in_users).toBeLessThanOrEqual(d.sessions);
+    expect(d.trend.every((r: any) => r.signins >= 0 && r.alerts >= 0)).toBe(
+      true,
+    );
+    expect(d.recent.length).toBeLessThanOrEqual(6);
+    expect(
+      d.recent.every((r: any) => /^(auth|user|backup|system)\./.test(r.action)),
+    ).toBe(true);
+    expect(d.roles.some((r: any) => r.role === "Administrator")).toBe(true);
+    expect(d).not.toHaveProperty("receivable");
+    expect(d).not.toHaveProperty("collected");
+    expect(Number.isFinite(Date.parse(d.checkedAt))).toBe(true);
+  });
   it("AT-01 exact payment creates receipt and balanced ledger", async () => {
     const sub = await fixture();
     await bill(sub);

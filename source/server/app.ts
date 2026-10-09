@@ -1230,25 +1230,54 @@ export async function buildApp() {
       )
       .send(result);
   });
-  get("/system/dashboard", "system.view", async () => {
-    const counts = (
-      await pool.query(`SELECT
-      (SELECT count(*) FROM users) AS users,
-      (SELECT count(*) FROM users WHERE active) AS active_users,
-      (SELECT count(*) FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active) AS sessions,
-      (SELECT count(*) FROM backup_history) AS backups`)
-    ).rows[0];
-    return {
-      ...counts,
-      database: "Connected",
-      latestBackup:
+  get("/system/dashboard", "system.view", async () =>
+    transaction(async (db) => {
+      await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      const counts = (
+        await db.query(`SELECT
+      (SELECT count(*)::int FROM users) AS users,
+      (SELECT count(*)::int FROM users WHERE active) AS active_users,
+      (SELECT count(*)::int FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active) AS sessions,
+      (SELECT count(DISTINCT s.user_id)::int FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active) AS signed_in_users,
+      (SELECT count(*)::int FROM backup_history) AS backups,
+      (SELECT count(*)::int FROM audit_logs WHERE outcome IN ('FAILURE','DENIED') AND action LIKE 'auth.%' AND created_at >= now()-interval '24 hours') AS security_alerts`)
+      ).rows[0];
+      const trend = (
+        await db.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,
+      count(a.id) FILTER (WHERE a.action='auth.login')::int AS signins,
+      count(a.id) FILTER (WHERE a.outcome IN ('FAILURE','DENIED'))::int AS alerts
+      FROM generate_series((now() AT TIME ZONE 'Asia/Manila')::date-6,(now() AT TIME ZONE 'Asia/Manila')::date,interval '1 day') day
+      LEFT JOIN audit_logs a ON a.created_at >= (day AT TIME ZONE 'Asia/Manila') AND a.created_at < ((day+interval '1 day') AT TIME ZONE 'Asia/Manila') AND a.action LIKE 'auth.%'
+      GROUP BY day ORDER BY day`)
+      ).rows;
+      const roles = (
+        await db.query(
+          "SELECT r.id AS role,count(u.id)::int AS users FROM roles r LEFT JOIN user_roles ur ON ur.role_id=r.id LEFT JOIN users u ON u.id=ur.user_id AND u.active GROUP BY r.id ORDER BY count(u.id) DESC,r.id",
+        )
+      ).rows;
+      const recent = (
+        await db.query(
+          "SELECT a.id,a.created_at,a.action,a.outcome,u.name AS actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id WHERE a.action LIKE 'auth.%' OR a.action LIKE 'user.%' OR a.action LIKE 'backup.%' OR a.action LIKE 'system.%' ORDER BY a.created_at DESC,a.id DESC LIMIT 6",
+        )
+      ).rows;
+      const latestBackup =
         (
-          await pool.query(
-            "SELECT filename,status FROM backup_history ORDER BY id DESC LIMIT 1",
+          await db.query(
+            "SELECT filename,status,created_at FROM backup_history ORDER BY id DESC LIMIT 1",
           )
-        ).rows[0] ?? null,
-    };
-  });
+        ).rows[0] ?? null;
+      return {
+        ...counts,
+        database: "Connected",
+        checkedAt: new Date().toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+        latestBackup,
+        trend,
+        roles,
+        recent,
+      };
+    }),
+  );
   get("/security-audit", "security.view", async (req: any) => {
     const q = z
       .object({
