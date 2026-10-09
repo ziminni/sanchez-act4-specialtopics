@@ -1,3 +1,4 @@
+import { defaultTheme, themeStyle } from "./theme";
 import { SystemSettings } from "./SystemSettings";
 import { BackupRestore } from "./BackupRestore";
 import { UserManagement } from "./UserManagement";
@@ -240,6 +241,28 @@ function App() {
     [arPlan, setArPlan] = useState(""),
     [arType, setArType] = useState("");
   const systemAdmin = user?.roles?.includes("Administrator");
+  const [themeColor, setThemeColor] = useState(defaultTheme);
+  useEffect(() => {
+    let active = true;
+    const refresh = () =>
+      api("/appearance")
+        .then((r) => {
+          if (active) setThemeColor(r.themeColor);
+        })
+        .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+  useEffect(() => {
+    const styles = themeStyle(themeColor);
+    Object.entries(styles).forEach(([key, value]) =>
+      document.documentElement.style.setProperty(key, String(value)),
+    );
+  }, [themeColor]);
   const can = (p: string) =>
     user?.permissions?.includes("*") || user?.permissions?.includes(p);
   const run = async (fn: () => Promise<void>) => {
@@ -536,7 +559,13 @@ function App() {
           </div>
         )}
         <div className="user">
-          <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
+          <div className="avatar">
+            {user.profile_image ? (
+              <img src={user.profile_image} alt="Your profile" />
+            ) : (
+              user.name.slice(0, 2).toUpperCase()
+            )}
+          </div>
           <div>
             {user.name}
             <small>{user.roles.join(", ")}</small>
@@ -567,7 +596,11 @@ function App() {
               <RefreshCw size={17} />
             </button>
             <span className="avatar small">
-              {user.name.slice(0, 2).toUpperCase()}
+              {user.profile_image ? (
+                <img src={user.profile_image} alt="Your profile" />
+              ) : (
+                user.name.slice(0, 2).toUpperCase()
+              )}
             </span>
           </div>
         </header>
@@ -705,9 +738,14 @@ function App() {
               {page === "System Settings" && (
                 <SystemSettings
                   data={data}
+                  user={user}
+                  pictureSaved={(image) =>
+                    setUser({ ...user, profile_image: image })
+                  }
                   request={api}
                   saved={async (value) => {
                     setUser({ ...user, system: value });
+                    setThemeColor(value.themeColor || defaultTheme);
                     await reload();
                   }}
                 />
@@ -818,9 +856,11 @@ function App() {
                             <span>
                               <i
                                 style={{
-                                  background: ["#2563eb", "#14b8a6", "#8b5cf6"][
-                                    i % 3
-                                  ],
+                                  background: [
+                                    "var(--theme)",
+                                    "#14b8a6",
+                                    "#8b5cf6",
+                                  ][i % 3],
                                 }}
                               />
                               {r.method}
@@ -831,9 +871,11 @@ function App() {
                             <span
                               style={{
                                 width: `${(Number(r.total) / Math.max(1, Number(data.kpis.collected))) * 100}%`,
-                                background: ["#2563eb", "#14b8a6", "#8b5cf6"][
-                                  i % 3
-                                ],
+                                background: [
+                                  "var(--theme)",
+                                  "#14b8a6",
+                                  "#8b5cf6",
+                                ][i % 3],
                               }}
                             />
                           </div>
@@ -870,8 +912,8 @@ function App() {
                                     style={{
                                       width: `${Math.max(1, (Number(total) / Math.max(1, Number(data.kpis.receivable))) * 100)}%`,
                                       background: [
-                                        "#2563eb",
-                                        "#60a5fa",
+                                        "var(--theme)",
+                                        "color-mix(in srgb, var(--theme) 55%, white)",
                                         "#fbbf24",
                                         "#f59e0b",
                                         "#ef4444",

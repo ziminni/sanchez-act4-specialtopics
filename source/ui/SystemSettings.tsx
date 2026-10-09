@@ -1,3 +1,5 @@
+import { ProfilePicture } from "./ProfilePicture";
+import { defaultTheme, themeStyle } from "./theme";
 import React, { useEffect, useState } from "react";
 import {
   Settings,
@@ -8,19 +10,28 @@ import {
   CheckCircle2,
   Save,
 } from "lucide-react";
-type Values = { displayName: string; supportContact: string };
+type Values = {
+  displayName: string;
+  supportContact: string;
+  themeColor?: string;
+};
 export function SystemSettings({
   data,
   request,
   saved,
+  user,
+  pictureSaved,
 }: {
   data: Values & { updated?: { created_at: string; actor: string } | null };
   request: (url: string, body?: unknown) => Promise<any>;
   saved: (v: Values) => Promise<void>;
+  user: any;
+  pictureSaved: (image: string | null) => void;
 }) {
   const [values, setValues] = useState<Values>({
     displayName: data.displayName,
     supportContact: data.supportContact,
+    themeColor: data.themeColor || defaultTheme,
   });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -29,11 +40,13 @@ export function SystemSettings({
     setValues({
       displayName: data.displayName,
       supportContact: data.supportContact,
+      themeColor: data.themeColor || defaultTheme,
     });
-  }, [data.displayName, data.supportContact]);
+  }, [data.displayName, data.supportContact, data.themeColor]);
   const dirty =
     values.displayName !== data.displayName ||
-    values.supportContact !== data.supportContact;
+    values.supportContact !== data.supportContact ||
+    values.themeColor !== (data.themeColor || defaultTheme);
   const valid =
     values.displayName.trim().length > 0 &&
     values.displayName.length <= 200 &&
@@ -70,6 +83,7 @@ export function SystemSettings({
           {notice}
         </div>
       )}
+      <ProfilePicture user={user} request={request} saved={pictureSaved} />
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -81,6 +95,7 @@ export function SystemSettings({
             const result = await request("/system/settings", {
               displayName: values.displayName.trim(),
               supportContact: values.supportContact.trim(),
+              themeColor: values.themeColor,
             });
             await saved(result);
             setValues(result);
@@ -96,6 +111,63 @@ export function SystemSettings({
       >
         <div className="settings-grid">
           <div className="settings-fields">
+            <section className="panel settings-section">
+              <div className="settings-section-heading">
+                <Settings size={21} />
+                <div>
+                  <h3>System theme color</h3>
+                  <p>Applies to all roles, pages and the sign-in screen.</p>
+                </div>
+              </div>
+              <label htmlFor="theme-color">Accent color</label>
+              <div className="theme-color-control">
+                <input
+                  id="theme-color"
+                  type="color"
+                  value={values.themeColor || defaultTheme}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setValues({ ...values, themeColor: e.target.value })
+                  }
+                />
+                <code>{values.themeColor || defaultTheme}</code>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    setValues({ ...values, themeColor: defaultTheme })
+                  }
+                >
+                  Default blue
+                </button>
+              </div>
+              <div className="theme-swatches">
+                {[
+                  ["Blue", "#2563eb"],
+                  ["Purple", "#7c3aed"],
+                  ["Green", "#15803d"],
+                  ["Teal", "#0f766e"],
+                  ["Rose", "#be185d"],
+                  ["Orange", "#c2410c"],
+                ].map(([name, color]) => (
+                  <button
+                    type="button"
+                    key={name}
+                    aria-label={`${name} theme`}
+                    aria-pressed={values.themeColor === color}
+                    disabled={busy}
+                    onClick={() => setValues({ ...values, themeColor: color })}
+                    style={{ background: color }}
+                  />
+                ))}
+              </div>
+              <p className="admin-note">
+                Buttons, navigation, focus rings and charts use this color.
+                Status colors retain their meaning. Other workspaces update
+                within 30 seconds.
+              </p>
+            </section>
+
             <section className="panel settings-section">
               <div className="settings-section-heading">
                 <Building2 size={21} />
@@ -187,12 +259,18 @@ export function SystemSettings({
             <p className="admin-note">
               Preview updates as you type. Save to apply changes.
             </p>
-            <div className="settings-preview-card">
+            <div
+              className="settings-preview-card"
+              style={themeStyle(values.themeColor || defaultTheme)}
+            >
               <div className="settings-preview-mark">
                 <Settings size={24} />
               </div>
               <strong>{values.displayName.trim() || "Your system name"}</strong>
               <small>System administration</small>
+              <button type="button" className="primary theme-preview-button">
+                Button preview
+              </button>
               {values.supportContact.trim() && (
                 <div>
                   <span>Support</span>
@@ -237,6 +315,7 @@ export function SystemSettings({
               setValues({
                 displayName: data.displayName,
                 supportContact: data.supportContact,
+                themeColor: data.themeColor || defaultTheme,
               });
               setError("");
               setNotice("");

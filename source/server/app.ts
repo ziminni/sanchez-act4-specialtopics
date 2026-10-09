@@ -99,7 +99,7 @@ export async function buildApp() {
       );
       const user = (
         await pool.query(
-          `SELECT u.id,u.name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`,
+          `SELECT u.id,u.name,u.profile_image FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active`,
           [tokenHash(token)],
         )
       ).rows[0];
@@ -148,6 +148,48 @@ export async function buildApp() {
       { preHandler: requirePermission(permission) },
       handler,
     );
+  app.get("/api/appearance", async () => ({
+    themeColor:
+      (
+        await pool.query(
+          "SELECT value->>'themeColor' AS color FROM application_settings WHERE key='system'",
+        )
+      ).rows[0]?.color || "#2563eb",
+  }));
+  post("/me/profile-picture", "system.settings", async (req: any) => {
+    const b = z
+      .object({ image: z.string().max(500000).nullable() })
+      .parse(req.body);
+    if (b.image !== null) {
+      const match =
+        /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(b.image);
+      if (!match) throw new Error("Upload a PNG or JPEG image.");
+      const bytes = Buffer.from(match[2], "base64");
+      const valid =
+        match[1] === "png"
+          ? bytes
+              .subarray(0, 8)
+              .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+          : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+      if (!valid || bytes.length > 350000)
+        throw new Error("Invalid image or image exceeds 350 KB.");
+    }
+    await transaction(async (db) => {
+      await db.query("UPDATE users SET profile_image=$1 WHERE id=$2", [
+        b.image,
+        req.actor.id,
+      ]);
+      await audit(
+        db,
+        req.actor.id,
+        "user.profile_picture",
+        "users",
+        req.actor.id,
+        { hasPicture: b.image !== null },
+      );
+    });
+    return { profile_image: b.image };
+  });
   app.get("/api/health", async () => {
     await pool.query("SELECT 1");
     return { status: "ok", database: "connected" };
@@ -1322,7 +1364,7 @@ export async function buildApp() {
       const rows = (
         await db.query(
           `SELECT a.id,a.created_at,a.action,a.entity,a.entity_id,a.reason,a.outcome,a.source_ip,a.request_id,u.name AS actor,u.username,
-        jsonb_strip_nulls(jsonb_build_object('username',a.new_value->>'username','role',a.new_value->>'role','active',a.new_value->'active','displayName',a.new_value->>'displayName','supportContact',a.new_value->>'supportContact','permission',a.new_value->>'permission','method',a.new_value->>'method','path',a.new_value->>'path','sha256',a.new_value->>'sha256','message',a.new_value->>'message','attachments',a.new_value->'attachments','bytes',a.new_value->'bytes')) AS details
+        jsonb_strip_nulls(jsonb_build_object('username',a.new_value->>'username','role',a.new_value->>'role','active',a.new_value->'active','displayName',a.new_value->>'displayName','themeColor',a.new_value->>'themeColor','hasPicture',a.new_value->'hasPicture','supportContact',a.new_value->>'supportContact','permission',a.new_value->>'permission','method',a.new_value->>'method','path',a.new_value->>'path','sha256',a.new_value->>'sha256','message',a.new_value->>'message','attachments',a.new_value->'attachments','bytes',a.new_value->'bytes')) AS details
         FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 25 OFFSET $6`,
           [...values, (q.page - 1) * 25],
         )
@@ -1347,11 +1389,18 @@ export async function buildApp() {
   });
   post("/system/settings", "system.settings", async (req: any) => {
     const b = z
-      .object({ displayName: text, supportContact: z.string().trim().max(200) })
+      .object({
+        displayName: text,
+        supportContact: z.string().trim().max(200),
+        themeColor: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .optional(),
+      })
       .parse(req.body);
     return transaction(async (db) => {
       await db.query(
-        "INSERT INTO application_settings(key,value) VALUES('system',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "INSERT INTO application_settings(key,value) VALUES('system',$1) ON CONFLICT(key) DO UPDATE SET value=application_settings.value || excluded.value",
         [JSON.stringify(b)],
       );
       await audit(

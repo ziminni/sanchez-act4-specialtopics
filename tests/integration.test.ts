@@ -429,7 +429,7 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
           headers: { authorization: `Bearer ${cashToken}` },
         })
       ).json();
-      expect(me.system).toEqual({
+      expect(me.system).toMatchObject({
         displayName: "BCIS Workspace Test",
         supportContact: "Help desk",
       });
@@ -461,6 +461,119 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
         payload: {
           displayName: original.displayName,
           supportContact: original.supportContact,
+        },
+      });
+    }
+  });
+  it("profile pictures are personal and theme changes persist globally", async () => {
+    const h = { authorization: `Bearer ${adminToken}` };
+    const png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5j0AAAAASUVORK5CYII=";
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/me/profile-picture",
+          headers: h,
+          payload: { image: png },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/me", headers: h })).json()
+        .profile_image,
+    ).toBe(png);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/me",
+          headers: { authorization: `Bearer ${cashToken}` },
+        })
+      ).json().profile_image,
+    ).toBeNull();
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/me/profile-picture",
+          headers: h,
+          payload: { image: "data:image/svg+xml;base64,PHN2Zz4=" },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/me/profile-picture",
+          headers: { authorization: `Bearer ${cashToken}` },
+          payload: { image: png },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/me/profile-picture",
+          headers: h,
+          payload: { image: null },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: "/api/me", headers: h })).json()
+        .profile_image,
+    ).toBeNull();
+    const old = (
+      await app.inject({
+        method: "GET",
+        url: "/api/system/settings",
+        headers: h,
+      })
+    ).json();
+    try {
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/settings",
+            headers: h,
+            payload: {
+              displayName: old.displayName,
+              supportContact: old.supportContact,
+              themeColor: "#7c3aed",
+            },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (await app.inject({ method: "GET", url: "/api/appearance" })).json(),
+      ).toEqual({ themeColor: "#7c3aed" });
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/settings",
+            headers: h,
+            payload: {
+              displayName: old.displayName,
+              supportContact: old.supportContact,
+              themeColor: "url(evil)",
+            },
+          })
+        ).statusCode,
+      ).toBe(400);
+    } finally {
+      await app.inject({
+        method: "POST",
+        url: "/api/system/settings",
+        headers: h,
+        payload: {
+          displayName: old.displayName,
+          supportContact: old.supportContact,
+          themeColor: old.themeColor || "#2563eb",
         },
       });
     }

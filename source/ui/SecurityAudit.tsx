@@ -34,6 +34,7 @@ const labels: Record<string, string> = {
   "auth.access_denied": "Access denied",
   "user.create": "User account created",
   "user.status": "User access updated",
+  "user.profile_picture": "Profile picture updated",
   "backup.create": "Backup created",
   "backup.verify": "Backup verification",
   "system.settings.update": "System settings updated",
