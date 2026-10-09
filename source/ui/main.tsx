@@ -1,3 +1,4 @@
+import { SystemSettings } from "./SystemSettings";
 import { BackupRestore } from "./BackupRestore";
 import { UserManagement } from "./UserManagement";
 import { AdminDashboard } from "./AdminDashboard";
@@ -486,7 +487,15 @@ function App() {
             <Wifi size={24} />
           </div>
           <div>
-            BCIS<small>Billing & Collections</small>
+            <span
+              className="system-brand-name"
+              title={user.system?.displayName}
+            >
+              {user.system?.displayName || "BCIS"}
+            </span>
+            <small>
+              {systemAdmin ? "System administration" : "Billing & Collections"}
+            </small>
           </div>
         </div>
         <div className="workspace">
@@ -520,6 +529,12 @@ function App() {
               : "All amounts in Philippine peso"}
           </small>
         </div>
+        {user.system?.supportContact && (
+          <div className="system-support">
+            <strong>Support</strong>
+            <span>{user.system.supportContact}</span>
+          </div>
+        )}
         <div className="user">
           <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
           <div>
@@ -688,37 +703,14 @@ function App() {
                 <BackupRestore rows={rows} request={api} reload={reload} />
               )}
               {page === "System Settings" && (
-                <section className="panel report-card">
-                  <h2>{data.displayName} system settings</h2>
-                  <form
-                    onSubmit={(e) =>
-                      submit(e, async (b) => {
-                        await api("/system/settings", b);
-                        setNotice("System settings saved.");
-                        await reload();
-                      })
-                    }
-                  >
-                    <Field label="System display name">
-                      <input
-                        name="displayName"
-                        required
-                        maxLength={200}
-                        defaultValue={data.displayName}
-                      />
-                    </Field>
-                    <Field label="Support contact">
-                      <input
-                        name="supportContact"
-                        maxLength={200}
-                        defaultValue={data.supportContact}
-                      />
-                    </Field>
-                    <button className="primary" disabled={busy}>
-                      Save system settings
-                    </button>
-                  </form>
-                </section>
+                <SystemSettings
+                  data={data}
+                  request={api}
+                  saved={async (value) => {
+                    setUser({ ...user, system: value });
+                    await reload();
+                  }}
+                />
               )}
               {page === "Dashboard" && !systemAdmin && (
                 <>

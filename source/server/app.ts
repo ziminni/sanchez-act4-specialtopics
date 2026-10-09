@@ -182,7 +182,14 @@ export async function buildApp() {
       return { token };
     },
   );
-  get("/me", "", async (req: any) => req.actor);
+  get("/me", "", async (req: any) => ({
+    ...req.actor,
+    system: (
+      await pool.query(
+        "SELECT value FROM application_settings WHERE key='system'",
+      )
+    ).rows[0]?.value ?? { displayName: "BCIS", supportContact: "" },
+  }));
   post("/logout", "", async (req: any) => {
     await securityEvent(req, "auth.logout", "SUCCESS", req.actor.id);
     await pool.query("DELETE FROM sessions WHERE token_hash=$1", [
@@ -1324,16 +1331,20 @@ export async function buildApp() {
     });
   });
 
-  get(
-    "/system/settings",
-    "system.settings",
-    async () =>
+  get("/system/settings", "system.settings", async () => {
+    const settings = (
+      await pool.query(
+        "SELECT value FROM application_settings WHERE key='system'",
+      )
+    ).rows[0]?.value ?? { displayName: "BCIS", supportContact: "" };
+    const updated =
       (
         await pool.query(
-          "SELECT value FROM application_settings WHERE key='system'",
+          "SELECT a.created_at,u.name AS actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id WHERE a.action='system.settings.update' ORDER BY a.id DESC LIMIT 1",
         )
-      ).rows[0]?.value ?? { displayName: "BCIS", supportContact: "" },
-  );
+      ).rows[0] ?? null;
+    return { ...settings, updated };
+  });
   post("/system/settings", "system.settings", async (req: any) => {
     const b = z
       .object({ displayName: text, supportContact: z.string().trim().max(200) })

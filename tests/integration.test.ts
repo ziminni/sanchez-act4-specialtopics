@@ -393,6 +393,78 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+  it("system settings persist workspace identity, validate input and record the editor", async () => {
+    const h = { authorization: `Bearer ${adminToken}` };
+    const original = (
+      await app.inject({
+        method: "GET",
+        url: "/api/system/settings",
+        headers: h,
+      })
+    ).json();
+    try {
+      const changed = await app.inject({
+        method: "POST",
+        url: "/api/system/settings",
+        headers: h,
+        payload: {
+          displayName: "  BCIS Workspace Test  ",
+          supportContact: "  Help desk  ",
+        },
+      });
+      expect(changed.statusCode).toBe(200);
+      const settings = (
+        await app.inject({
+          method: "GET",
+          url: "/api/system/settings",
+          headers: h,
+        })
+      ).json();
+      expect(settings.displayName).toBe("BCIS Workspace Test");
+      expect(settings.updated.actor).toBeTruthy();
+      const me = (
+        await app.inject({
+          method: "GET",
+          url: "/api/me",
+          headers: { authorization: `Bearer ${cashToken}` },
+        })
+      ).json();
+      expect(me.system).toEqual({
+        displayName: "BCIS Workspace Test",
+        supportContact: "Help desk",
+      });
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/settings",
+            headers: h,
+            payload: { displayName: "   ", supportContact: "" },
+          })
+        ).statusCode,
+      ).toBe(400);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/settings",
+            headers: { authorization: `Bearer ${cashToken}` },
+            payload: { displayName: "Denied", supportContact: "" },
+          })
+        ).statusCode,
+      ).toBe(403);
+    } finally {
+      await app.inject({
+        method: "POST",
+        url: "/api/system/settings",
+        headers: h,
+        payload: {
+          displayName: original.displayName,
+          supportContact: original.supportContact,
+        },
+      });
+    }
+  });
   it("AT-01 exact payment creates receipt and balanced ledger", async () => {
     const sub = await fixture();
     await bill(sub);
