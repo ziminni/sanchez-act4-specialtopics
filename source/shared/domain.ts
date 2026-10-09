@@ -50,12 +50,10 @@ export const rolePermissions: Record<string, string[]> = {
   ],
   Cashier: ["subscriber.view", "payment.create", "report.view"],
   "Collection Supervisor": [
-    "subscriber.view",
     "collection.view",
     "collection.manage",
     "collection.reconcile",
-    "report.view",
-    "report.export",
+    "ledger.view",
   ],
   Auditor: [
     "subscriber.view",

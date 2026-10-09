@@ -3,6 +3,7 @@ import PDFDocument from "pdfkit";
 import { pool, transaction } from "./db.js";
 import { ledger } from "./finance.js";
 import { manilaDateWindow, manilaDate } from "../shared/domain.js";
+import { imageBytes, systemLogo, systemProfile } from "./system-profile.js";
 export async function reportData(
   type: string,
   q: { from: string; to: string; subscriberId?: number },
@@ -119,10 +120,21 @@ export async function exportReport(
     ),
   );
   const keys = Object.keys(rows[0] || { result: "" });
-  const title = `BCIS | ${type.toUpperCase()}`;
+  const profile = await systemProfile();
+  const title = `${profile.businessName} | ${type.toUpperCase()}`;
+  const details = [
+    profile.address,
+    profile.contactNumber,
+    profile.email,
+    profile.tin && `TIN ${profile.tin}`,
+  ]
+    .filter(Boolean)
+    .join("  |  ");
   if (q.format === "xlsx") {
     const wb = new ExcelJS.Workbook();
-    wb.creator = "BCIS";
+    wb.creator = profile.businessName;
+    wb.company = profile.businessName;
+    wb.title = title;
     const ws = wb.addWorksheet(type);
     ws.columns = keys.map((k) => ({
       header: k.replaceAll("_", " ").toUpperCase(),
@@ -143,6 +155,13 @@ export async function exportReport(
     ws.autoFilter = { from: "A1", to: { row: 1, column: keys.length } };
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
+  const storedLogo = await systemLogo();
+  let logo: Buffer | null = null;
+  try {
+    logo = storedLogo ? imageBytes(storedLogo) : null;
+  } catch {
+    logo = null;
+  }
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -157,19 +176,30 @@ export async function exportReport(
     const width = (doc.page.width - 70) / keys.length;
     let y = 0;
     const header = () => {
+      const x = logo ? 85 : 35;
+      if (logo) doc.image(logo, 35, 26, { fit: [42, 42] });
       doc
         .font("Helvetica-Bold")
         .fontSize(18)
         .fillColor("#0F2747")
-        .text(title, 35, 30);
+        .text(title, x, 26, {
+          width: doc.page.width - x - 35,
+          height: 22,
+          ellipsis: true,
+        });
+      doc.font("Helvetica").fontSize(8).fillColor("#64748B");
+      if (details)
+        doc.text(details, x, 50, {
+          width: doc.page.width - x - 35,
+          lineBreak: false,
+          ellipsis: true,
+        });
       doc
-        .font("Helvetica")
         .fontSize(9)
-        .fillColor("#64748B")
         .text(
           `${q.from} to ${q.to}  |  PHP  |  ${rows.length} records`,
-          35,
-          57,
+          x,
+          details ? 63 : 57,
         );
       y = 82;
       doc.rect(35, y, doc.page.width - 70, 26).fill("#0F2747");
@@ -234,7 +264,7 @@ export async function exportReport(
         .fontSize(8)
         .fillColor("#64748B")
         .text(
-          `Bukidnon Cable and Internet Services · Page ${i + 1} of ${range.count}`,
+          `${profile.businessName} · Page ${i + 1} of ${range.count}`,
           35,
           doc.page.height - 30,
           { lineBreak: false },

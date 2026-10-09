@@ -550,7 +550,7 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       ).toBe(200);
       expect(
         (await app.inject({ method: "GET", url: "/api/appearance" })).json(),
-      ).toEqual({ themeColor: "#7c3aed" });
+      ).toMatchObject({ themeColor: "#7c3aed" });
       expect(
         (
           await app.inject({
@@ -575,6 +575,157 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
           supportContact: old.supportContact,
           themeColor: old.themeColor || "#2563eb",
         },
+      });
+    }
+  });
+  it("system profile stores business details and a shared logo", async () => {
+    const h = { authorization: `Bearer ${adminToken}` };
+    const png =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5j0AAAAASUVORK5CYII=";
+    const settings = (payload: Record<string, string | undefined>) =>
+      app.inject({
+        method: "POST",
+        url: "/api/system/settings",
+        headers: h,
+        payload,
+      });
+    const old = (
+      await app.inject({
+        method: "GET",
+        url: "/api/system/settings",
+        headers: h,
+      })
+    ).json();
+    const oldLogo = (
+      await app.inject({ method: "GET", url: "/api/appearance/logo" })
+    ).json().logo;
+    const base = {
+      displayName: old.displayName,
+      supportContact: old.supportContact,
+    };
+    try {
+      const saved = await settings({
+        ...base,
+        businessName: "  Synthetic Cable Co.  ",
+        address: "1 Test Street, Malaybalay City",
+        contactNumber: "0917 000 0000",
+        email: "billing@example.test",
+        tin: "123-456-789-000",
+      });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json()).toMatchObject({
+        businessName: "Synthetic Cable Co.",
+        displayName: old.displayName,
+      });
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/me",
+            headers: { authorization: `Bearer ${cashToken}` },
+          })
+        ).json().system,
+      ).toMatchObject({
+        businessName: "Synthetic Cable Co.",
+        tin: "123-456-789-000",
+        email: "billing@example.test",
+      });
+      for (const invalid of [
+        { tin: "12345" },
+        { email: "not-an-email" },
+        { businessName: "  " },
+      ])
+        expect((await settings({ ...base, ...invalid })).statusCode).toBe(400);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/logo",
+            headers: { authorization: `Bearer ${cashToken}` },
+            payload: { image: png },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/logo",
+            headers: h,
+            payload: { image: "data:image/svg+xml;base64,PHN2Zz4=" },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const logo = await app.inject({
+        method: "POST",
+        url: "/api/system/logo",
+        headers: h,
+        payload: { image: png },
+      });
+      expect(logo.statusCode).toBe(200);
+      const appearance = (
+        await app.inject({ method: "GET", url: "/api/appearance" })
+      ).json();
+      expect(appearance).toMatchObject({
+        businessName: "Synthetic Cable Co.",
+        logoVersion: logo.json().logoVersion,
+      });
+      expect(appearance.logo).toBeUndefined();
+      expect(
+        (
+          await app.inject({ method: "GET", url: "/api/appearance/logo" })
+        ).json().logo,
+      ).toBe(png);
+      const pdf = await app.inject({
+        method: "GET",
+        url: "/api/reports/collections?format=pdf",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(pdf.statusCode).toBe(200);
+      expect(pdf.rawPayload.subarray(0, 4).toString()).toBe("%PDF");
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/settings",
+            headers: { authorization: `Bearer ${token}` },
+          })
+        )
+          .json()
+          .some((r: { key: string }) => r.key === "system_logo"),
+      ).toBe(false);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/system/logo",
+            headers: h,
+            payload: { image: null },
+          })
+        ).json(),
+      ).toEqual({ logo: null, logoVersion: null });
+      expect(
+        (await app.inject({ method: "GET", url: "/api/appearance" })).json()
+          .logoVersion,
+      ).toBeNull();
+      const audited = await pool.query(
+        "SELECT new_value FROM audit_logs WHERE action='system.logo.update' ORDER BY id DESC LIMIT 1",
+      );
+      expect(audited.rows[0].new_value).toMatchObject({ hasLogo: false });
+    } finally {
+      await settings({
+        ...base,
+        businessName: old.businessName,
+        address: old.address,
+        contactNumber: old.contactNumber,
+        email: old.email,
+        tin: old.tin,
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/system/logo",
+        headers: h,
+        payload: { image: oldLogo },
       });
     }
   });
@@ -728,6 +879,455 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
         ).rows[0].status,
       ).toBe("REMITTED");
     });
+  it("Collection Supervisor has a collection-only workspace with performance results", async () => {
+    expect(rolePermissions["Collection Supervisor"]).toEqual([
+      "collection.view",
+      "collection.manage",
+      "collection.reconcile",
+      "ledger.view",
+    ]);
+    const tag = randomUUID().slice(0, 8);
+    const supervisor = (
+      await pool.query(
+        "INSERT INTO users(username,name,password_hash) VALUES($1,$1,$2) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash RETURNING id",
+        ["testsupervisor", hashPassword("Test-only-password-2026")],
+      )
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO user_roles VALUES($1,'Collection Supervisor') ON CONFLICT DO NOTHING",
+      [supervisor.id],
+    );
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      payload: {
+        username: "testsupervisor",
+        password: "Test-only-password-2026",
+      },
+    });
+    const h = { authorization: `Bearer ${login.json().token}` };
+    const sub = await fixture();
+    const area = (
+      await pool.query(
+        "INSERT INTO collection_areas(name) VALUES($1) RETURNING id",
+        ["Route " + tag],
+      )
+    ).rows[0];
+    const c = (
+      await pool.query("INSERT INTO collectors(name) VALUES($1) RETURNING id", [
+        "Collector " + tag,
+      ])
+    ).rows[0];
+    await pool.query(
+      "UPDATE subscribers SET area_id=$1,collector_id=$2 WHERE id=$3",
+      [area.id, c.id, sub],
+    );
+    const b = (
+      await pool.query(
+        "INSERT INTO collection_batches(collector_id,area_id,expected) VALUES($1,$2,100000) RETURNING id",
+        [c.id, area.id],
+      )
+    ).rows[0];
+    await pool.query("INSERT INTO batch_accounts VALUES($1,$2,100000)", [
+      b.id,
+      sub,
+    ]);
+    await transaction((db) =>
+      postPayment(
+        db,
+        {
+          subscriberId: sub,
+          amount: 80000,
+          method: "Cash",
+          idempotencyKey: randomUUID(),
+          batchId: b.id,
+        },
+        owner,
+      ),
+    );
+    for (const [url, payload] of [
+      [
+        `/api/batches/${b.id}/transition`,
+        { status: "SUBMITTED", reason: "Collector returned from route" },
+      ],
+      [
+        `/api/batches/${b.id}/remit`,
+        { amount: 75000, reason: "Counted cash is 50 pesos short" },
+      ],
+    ] as const)
+      expect(
+        (await app.inject({ method: "POST", url, headers: h, payload }))
+          .statusCode,
+      ).toBe(200);
+    const get = (url: string) =>
+      app.inject({ method: "GET", url: "/api" + url, headers: h });
+    const performance = await get("/collections/performance");
+    expect(performance.statusCode).toBe(200);
+    const row = performance
+      .json()
+      .rows.find((r: { id: number }) => r.id === c.id);
+    expect({
+      batches: Number(row.batches),
+      assigned: Number(row.assigned),
+      expected: Number(row.expected),
+      collected: Number(row.collected),
+      remitted: Number(row.remitted),
+      difference: Number(row.difference),
+      shortages: Number(row.shortages),
+    }).toEqual({
+      batches: 1,
+      assigned: 1,
+      expected: 100000,
+      collected: 80000,
+      remitted: 75000,
+      difference: -5000,
+      shortages: 1,
+    });
+    expect(
+      (await get("/collections/performance?from=2026-02-01&to=2026-01-01"))
+        .statusCode,
+    ).toBe(400);
+    const overview = await get("/collections/overview");
+    expect(overview.statusCode).toBe(200);
+    expect(Number(overview.json().awaiting_reconciliation)).toBeGreaterThan(0);
+    const remittances = (await get("/collections/remittances")).json();
+    expect(
+      remittances.queue.find((q: { id: number }) => q.id === b.id).status,
+    ).toBe("REMITTED");
+    expect(
+      Number(
+        remittances.history.find(
+          (r: { batch_id: number }) => r.batch_id === b.id,
+        ).difference,
+      ),
+    ).toBe(-5000);
+    const areas = (await get("/collections/areas")).json();
+    const listed = areas.areas.find((a: { id: number }) => a.id === area.id);
+    expect(Number(listed.active_subscribers)).toBe(1);
+    expect(listed.collectors).toBe("Collector " + tag);
+    expect((await get("/reports/collectors?format=xlsx")).statusCode).toBe(200);
+    for (const url of [
+      "/subscribers",
+      "/payments",
+      "/invoices",
+      "/dashboard",
+      "/receivables",
+      "/reports/subscribers?format=pdf",
+      "/reports/aging?format=pdf",
+    ])
+      expect((await get(url)).statusCode, url).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/collections/overview",
+          headers: { authorization: `Bearer ${cashToken}` },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
+  it("Auditor reviews and records corrections from the audit workspace", async () => {
+    expect(rolePermissions.Auditor).toEqual(
+      expect.arrayContaining(["audit.view", "payment.reverse", "report.view"]),
+    );
+    const auditor = (
+      await pool.query(
+        "INSERT INTO users(username,name,password_hash) VALUES($1,$1,$2) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash RETURNING id",
+        ["testauditor", hashPassword("Test-only-password-2026")],
+      )
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO user_roles VALUES($1,'Auditor') ON CONFLICT DO NOTHING",
+      [auditor.id],
+    );
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/login",
+      payload: { username: "testauditor", password: "Test-only-password-2026" },
+    });
+    const h = { authorization: `Bearer ${login.json().token}` };
+    const call = (method: "GET" | "POST", url: string, payload?: object) =>
+      app.inject({ method, url: "/api" + url, headers: h, payload });
+    const paid = await fixture();
+    await bill(paid);
+    const payment = await pay(paid, 99900);
+    const billed = await fixture([50000, 30000]);
+    await bill(billed);
+    const [adjustInvoice, voidInvoice] = await balance(billed);
+    const lookup = await call(
+      "GET",
+      `/corrections/lookup?search=${payment.receipt_no}`,
+    );
+    expect(lookup.statusCode).toBe(200);
+    expect(lookup.json().payments[0].id).toBe(payment.id);
+    for (const [url, payload] of [
+      [
+        `/payments/${payment.id}/reverse`,
+        { reason: "Duplicate receipt found in review" },
+      ],
+      [
+        `/invoices/${adjustInvoice.id}/adjust`,
+        { amount: -10000, reason: "Approved outage credit" },
+      ],
+      [
+        `/invoices/${voidInvoice.id}/void`,
+        { reason: "Billed for a service never installed" },
+      ],
+    ] as const)
+      expect((await call("POST", url, payload)).statusCode, url).toBe(200);
+    const register = (await call("GET", "/corrections")).json();
+    const mine = register.rows.filter(
+      (r: { subscriber_id: number }) =>
+        r.subscriber_id === paid || r.subscriber_id === billed,
+    );
+    expect(
+      mine
+        .map((r: { kind: string; amount: string; actor: string }) => [
+          r.kind,
+          Number(r.amount),
+          r.actor,
+        ])
+        .sort(),
+    ).toEqual(
+      [
+        ["ADJUSTMENT", -10000, "testauditor"],
+        ["REVERSAL", 99900, "testauditor"],
+        ["VOID", -30000, "testauditor"],
+      ].sort(),
+    );
+    expect(mine.find((r: { kind: string }) => r.kind === "VOID").reason).toBe(
+      "Billed for a service never installed",
+    );
+    const voids = (await call("GET", "/corrections?kind=VOID")).json();
+    expect(voids.rows.every((r: { kind: string }) => r.kind === "VOID")).toBe(
+      true,
+    );
+    const searched = (
+      await call("GET", `/corrections?search=${payment.receipt_no}`)
+    ).json();
+    expect(searched.rows.map((r: { kind: string }) => r.kind)).toEqual([
+      "REVERSAL",
+    ]);
+    expect(
+      (await call("GET", "/corrections?from=2026-02-01&to=2026-01-01"))
+        .statusCode,
+    ).toBe(400);
+    const overview = await call("GET", "/audit/overview");
+    expect(overview.statusCode).toBe(200);
+    expect(Number(overview.json().summary.reversals)).toBeGreaterThan(0);
+    expect(Number(overview.json().receivables.total)).toBeGreaterThan(0);
+    for (const url of ["/receivables", "/audit", "/reports/aging?format=pdf"])
+      expect((await call("GET", url)).statusCode, url).toBe(200);
+    for (const url of [
+      "/corrections",
+      "/audit/overview",
+      "/corrections/lookup?search=RCPT",
+    ])
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api" + url,
+            headers: { authorization: `Bearer ${cashToken}` },
+          })
+        ).statusCode,
+        url,
+      ).toBe(403);
+  });
+  it("Ledger page is available to Owner and Collection Supervisor only", async () => {
+    expect(rolePermissions["Collection Supervisor"]).toContain("ledger.view");
+    const sub = await fixture();
+    await bill(sub);
+    const p = await pay(sub, 50000);
+    const user = (
+      await pool.query(
+        "INSERT INTO users(username,name,password_hash) VALUES($1,$1,$2) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash RETURNING id",
+        ["testsupervisor", hashPassword("Test-only-password-2026")],
+      )
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO user_roles VALUES($1,'Collection Supervisor') ON CONFLICT DO NOTHING",
+      [user.id],
+    );
+    const supervisor = (
+      await app.inject({
+        method: "POST",
+        url: "/api/login",
+        payload: {
+          username: "testsupervisor",
+          password: "Test-only-password-2026",
+        },
+      })
+    ).json().token;
+    const account = (
+      await pool.query("SELECT account_no FROM subscribers WHERE id=$1", [sub])
+    ).rows[0].account_no;
+    for (const t of [token, supervisor]) {
+      const h = { authorization: `Bearer ${t}` };
+      const list = await app.inject({
+        method: "GET",
+        url: `/api/ledger/subscribers?search=${account}`,
+        headers: h,
+      });
+      expect(list.statusCode).toBe(200);
+      expect(list.json().map((r: { id: number }) => r.id)).toEqual([sub]);
+      expect(Number(list.json()[0].outstanding)).toBe(49900);
+      const l = (
+        await app.inject({
+          method: "GET",
+          url: `/api/ledger/${sub}`,
+          headers: h,
+        })
+      ).json();
+      expect(l.subscriber.account_no).toBe(account);
+      expect(l.rows.map((r: { reference: string }) => r.reference)).toContain(
+        p.receipt_no,
+      );
+      expect([l.debits, l.credits, l.balance]).toEqual([99900, 50000, 49900]);
+      const soa = await app.inject({
+        method: "GET",
+        url: `/api/reports/soa?format=pdf&subscriberId=${sub}`,
+        headers: h,
+      });
+      expect(soa.statusCode).toBe(200);
+    }
+    for (const t of [cashToken, adminToken])
+      for (const url of [`/api/ledger/subscribers`, `/api/ledger/${sub}`])
+        expect(
+          (
+            await app.inject({
+              method: "GET",
+              url,
+              headers: { authorization: `Bearer ${t}` },
+            })
+          ).statusCode,
+          url,
+        ).toBe(403);
+  });
+  it("Technician workspace shows operational service data without amounts", async () => {
+    const tech = (
+      await pool.query(
+        "INSERT INTO users(username,name,password_hash) VALUES($1,$1,$2) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash RETURNING id",
+        ["testtechnician", hashPassword("Test-only-password-2026")],
+      )
+    ).rows[0];
+    await pool.query(
+      "INSERT INTO user_roles VALUES($1,'Technician') ON CONFLICT DO NOTHING",
+      [tech.id],
+    );
+    const h = {
+      authorization: `Bearer ${
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/login",
+            payload: {
+              username: "testtechnician",
+              password: "Test-only-password-2026",
+            },
+          })
+        ).json().token
+      }`,
+    };
+    const get = (url: string) =>
+      app.inject({ method: "GET", url: "/api" + url, headers: h });
+    const money = /"(rate|price|fee|outstanding|balance|amount|total)"/;
+    // Suspended service with overdue debt (blocked) and one with none (ready).
+    const blocked = await fixture();
+    await bill(blocked, "2026-01-01");
+    const ready = await fixture();
+    const services = (
+      await pool.query(
+        "SELECT id,subscriber_id FROM service_accounts WHERE subscriber_id=ANY($1)",
+        [[blocked, ready]],
+      )
+    ).rows;
+    const svc = (sub: number) =>
+      services.find((r: { subscriber_id: number }) => r.subscriber_id === sub)
+        .id;
+    for (const sub of [blocked, ready]) {
+      await pool.query(
+        "UPDATE service_accounts SET status='SUSPENDED' WHERE id=$1",
+        [svc(sub)],
+      );
+      await pool.query(
+        "INSERT INTO suspension_records(service_id,reason,approved_by,effective_date) VALUES($1,'Overdue test',$2,CURRENT_DATE)",
+        [svc(sub), owner],
+      );
+    }
+    const requests = (
+      await pool.query(
+        "INSERT INTO reconnection_records(service_id,technician_id) VALUES($1,$3),($2,$3) RETURNING id,service_id",
+        [svc(blocked), svc(ready), tech.id],
+      )
+    ).rows;
+    const reqFor = (sub: number) =>
+      requests.find((r: { service_id: number }) => r.service_id === svc(sub))
+        .id;
+    for (const url of [
+      "/field/overview",
+      "/field/services",
+      "/field/suspensions",
+      "/field/reconnections",
+      "/field/reconnections?view=completed",
+      "/services",
+      "/suspension-candidates",
+      "/lookups",
+    ]) {
+      const r = await get(url);
+      expect(r.statusCode, url).toBe(200);
+      expect(r.body, url).not.toMatch(money);
+    }
+    const pending = (await get("/field/reconnections")).json();
+    const row = (sub: number) =>
+      pending.find((r: { id: number }) => r.id === reqFor(sub));
+    expect([row(blocked).ready, row(ready).ready]).toEqual([false, true]);
+    expect(
+      (await get("/field/suspensions"))
+        .json()
+        .suspended.some((r: { id: number }) => r.id === svc(ready)),
+    ).toBe(true);
+    const complete = (sub: number) =>
+      app.inject({
+        method: "POST",
+        url: `/api/reconnections/${reqFor(sub)}/complete`,
+        headers: h,
+        payload: {},
+      });
+    expect((await complete(blocked)).statusCode).toBe(400);
+    expect((await complete(ready)).statusCode).toBe(200);
+    expect(
+      (
+        await pool.query("SELECT status FROM service_accounts WHERE id=$1", [
+          svc(ready),
+        ])
+      ).rows[0].status,
+    ).toBe("ACTIVE");
+    expect(
+      (await get("/field/reconnections?view=completed"))
+        .json()
+        .some((r: { id: number }) => r.id === reqFor(ready)),
+    ).toBe(true);
+    for (const url of [
+      "/subscribers",
+      "/payments",
+      "/invoices",
+      "/receivables",
+      "/dashboard",
+      "/ledger/subscribers",
+    ])
+      expect((await get(url)).statusCode, url).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/services/${svc(blocked)}/state`,
+          headers: h,
+          payload: { status: "TERMINATED", reason: "Not allowed for tech" },
+        })
+      ).statusCode,
+    ).toBe(403);
+  });
   it("AT-09 concurrent same-account posting preserves value and unique receipts", async () => {
     const sub = await fixture();
     await bill(sub);

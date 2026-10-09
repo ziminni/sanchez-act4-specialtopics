@@ -38,6 +38,7 @@ const labels: Record<string, string> = {
   "backup.create": "Backup created",
   "backup.verify": "Backup verification",
   "system.settings.update": "System settings updated",
+  "system.logo.update": "System logo updated",
 };
 const timestamp = (value: string) =>
   new Intl.DateTimeFormat("en-PH", {

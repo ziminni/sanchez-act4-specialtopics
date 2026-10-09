@@ -1,10 +1,25 @@
 import { defaultTheme, themeStyle } from "./theme";
 import { SystemSettings } from "./SystemSettings";
+import { Badge, Table, date } from "./components";
+import {
+  AreasRoutes,
+  CollectionOverview,
+  CollectorPerformance,
+  Remittances,
+} from "./CollectionWorkspace";
+import { AuditOverview, Corrections } from "./AuditWorkspace";
+import { Ledger } from "./Ledger";
+import {
+  FieldOverview,
+  Reconnections,
+  ServiceAccounts,
+  Suspensions,
+} from "./TechnicianWorkspace";
 import { BackupRestore } from "./BackupRestore";
 import { UserManagement } from "./UserManagement";
 import { AdminDashboard } from "./AdminDashboard";
 import { SecurityAudit } from "./SecurityAudit";
-import React, { useState, useEffect, useCallback, useId } from "react";
+import React, { useState, useEffect, useCallback, useId, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
@@ -30,6 +45,18 @@ import {
   Wallet,
   Activity,
   Menu,
+  MapPin,
+  ClipboardCheck,
+  TrendingUp,
+  RotateCcw,
+  BookOpen,
+  BadgeCheck,
+  Database,
+  UserCog,
+  HandCoins,
+  Wrench,
+  PauseCircle,
+  PlugZap,
 } from "lucide-react";
 import { money, centavos, allocate } from "../shared/domain";
 import "./style.css";
@@ -118,85 +145,6 @@ const today = () =>
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-const date = (v: any) =>
-  v
-    ? new Date(v).toLocaleDateString("en-PH", {
-        timeZone: "Asia/Manila",
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "—";
-function Badge({ value }: { value: any }) {
-  return (
-    <span
-      className={"badge " + String(value).toLowerCase().replaceAll("_", "-")}
-    >
-      {String(value ?? "—").replaceAll("_", " ")}
-    </span>
-  );
-}
-function Table({
-  rows,
-  columns,
-  onRow,
-}: {
-  rows: Row[];
-  columns: [string, string, ((r: Row) => React.ReactNode)?][];
-  onRow?: (r: Row) => void;
-}) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {columns.map(([k, label]) => (
-              <th
-                key={k}
-                className={
-                  /amount|balance|total|outstanding|cash|difference/.test(k)
-                    ? "numeric"
-                    : ""
-                }
-              >
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr
-              key={r.id ?? i}
-              onClick={() => onRow?.(r)}
-              className={onRow ? "clickable" : ""}
-            >
-              {columns.map(([k, , render]) => (
-                <td
-                  key={k}
-                  className={
-                    /amount|balance|total|outstanding|cash|difference/.test(k)
-                      ? "numeric"
-                      : ""
-                  }
-                >
-                  {render ? render(r) : String(r[k] ?? "—")}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {!rows.length && (
-        <div className="empty">
-          <FileText size={28} />
-          <h3>No records to display</h3>
-          <p>Records will appear here as your team works.</p>
-        </div>
-      )}
-    </div>
-  );
-}
 function Field({
   label,
   children,
@@ -241,13 +189,51 @@ function App() {
     [arPlan, setArPlan] = useState(""),
     [arType, setArType] = useState("");
   const systemAdmin = user?.roles?.includes("Administrator");
+  const collectionSupervisor =
+    !systemAdmin &&
+    user?.roles?.includes("Collection Supervisor") &&
+    !user?.permissions?.includes("*");
+  const auditor =
+    !systemAdmin &&
+    user?.roles?.includes("Auditor") &&
+    !user?.permissions?.includes("*");
+  const [correctionKind, setCorrectionKind] = useState("");
+  const [ledgerId, setLedgerId] = useState<number | null>(null);
+  const technician =
+    !systemAdmin &&
+    user?.roles?.includes("Technician") &&
+    !user?.permissions?.includes("*");
+  const [fieldStatus, setFieldStatus] = useState("");
+  const [reconView, setReconView] = useState("pending");
   const [themeColor, setThemeColor] = useState(defaultTheme);
+  const [branding, setBranding] = useState<{
+    businessName: string;
+    logo: string | null;
+    logoVersion: string | null;
+  }>({
+    businessName: "Bukidnon Cable and Internet Services",
+    logo: null,
+    logoVersion: null,
+  });
+  const logoVersionRef = useRef<string | null>(null);
   useEffect(() => {
     let active = true;
     const refresh = () =>
       api("/appearance")
-        .then((r) => {
-          if (active) setThemeColor(r.themeColor);
+        .then(async (r) => {
+          if (!active) return;
+          setThemeColor(r.themeColor);
+          let logo: string | null | undefined;
+          if (r.logoVersion !== logoVersionRef.current) {
+            logo = r.logoVersion ? (await api("/appearance/logo")).logo : null;
+            if (!active) return;
+            logoVersionRef.current = r.logoVersion;
+          }
+          setBranding((b) => ({
+            businessName: r.businessName || b.businessName,
+            logo: logo === undefined ? b.logo : logo,
+            logoVersion: r.logoVersion,
+          }));
         })
         .catch(() => {});
     refresh();
@@ -277,12 +263,29 @@ function App() {
     }
   };
   const routes: Record<string, string> = {
-    Dashboard: systemAdmin ? "/system/dashboard" : "/dashboard",
+    Dashboard: systemAdmin
+      ? "/system/dashboard"
+      : collectionSupervisor
+        ? "/collections/overview"
+        : auditor
+          ? "/audit/overview"
+          : technician
+            ? "/field/overview"
+            : "/dashboard",
     Subscribers: `/subscribers?search=${encodeURIComponent(search)}&page=${pageNo}${area ? "&area=" + area : ""}`,
     Billing: `/invoices?page=${pageNo}&search=${encodeURIComponent(search)}`,
     Payments: `/payments?page=${pageNo}`,
     "GCash Verification": "/proofs",
     Collections: "/batches",
+    Batches: "/batches",
+    "Areas & Routes": "/collections/areas",
+    "Remittance & Reconciliation": "/collections/remittances",
+    "Collector Performance": `/collections/performance?from=${from}&to=${to}`,
+    "Service Accounts": `/field/services?search=${encodeURIComponent(search)}&status=${fieldStatus}`,
+    Suspensions: "/field/suspensions",
+    Reconnections: `/field/reconnections?view=${reconView}`,
+    Ledger: `/ledger/subscribers?search=${encodeURIComponent(search)}`,
+    "Adjustments & Reversals": `/corrections?kind=${correctionKind}&search=${encodeURIComponent(search)}&from=${from}&to=${to}`,
     Receivables: `/receivables?minDays=${arDays}${arPlan ? "&plan=" + arPlan : ""}${arType ? "&type=" + arType : ""}&page=${pageNo}${area ? "&area=" + area : ""}${collector ? "&collector=" + collector : ""}`,
     Services:
       serviceView === "reconnections"
@@ -311,6 +314,11 @@ function App() {
     arDays,
     arPlan,
     arType,
+    from,
+    to,
+    correctionKind,
+    fieldStatus,
+    reconView,
   ]);
   useEffect(() => {
     if (user) {
@@ -355,6 +363,10 @@ function App() {
     setData(null);
     setPage(p);
     setSearch("");
+    setCorrectionKind("");
+    setLedgerId(null);
+    setFieldStatus("");
+    setReconView("pending");
     setPageNo(1);
     setArea("");
     setCollector("");
@@ -419,7 +431,11 @@ function App() {
       <div className="login">
         <div className="login-brand">
           <div className="brand-mark">
-            <Wifi size={26} />
+            {branding.logo ? (
+              <img src={branding.logo} alt="System logo" />
+            ) : (
+              <Wifi size={26} />
+            )}
           </div>
           <h1>
             BCIS<span>Billing & Collections</span>
@@ -429,7 +445,9 @@ function App() {
             <br />
             Confidence in every collection.
           </p>
-          <div className="login-foot">BUKIDNON CABLE AND INTERNET SERVICES</div>
+          <div className="login-foot">
+            {branding.businessName.toUpperCase()}
+          </div>
         </div>
         <div className="login-form">
           <div className="eyebrow">YOUR OPERATIONS, CONNECTED</div>
@@ -480,34 +498,107 @@ function App() {
         </div>
       </div>
     );
-  const nav: [string, any, string, string][] = systemAdmin
+  const nav: [string, any, string, string][] = technician
     ? [
-        ["Dashboard", LayoutDashboard, "system.view", "SYSTEM"],
-        ["User Management", Users, "user.manage", ""],
-        ["Security Audit", ShieldCheck, "security.view", ""],
-        ["Backup Restore", ShieldCheck, "backup.restore", ""],
-        ["System Settings", Settings, "system.settings", ""],
+        ["Dashboard", LayoutDashboard, "service.view", "OVERVIEW"],
+        ["Service Accounts", Wifi, "service.view", "SERVICE OPERATIONS"],
+        ["Suspensions", PauseCircle, "service.view", "SERVICE OPERATIONS"],
+        ["Reconnections", PlugZap, "service.view", "SERVICE OPERATIONS"],
       ]
-    : [
-        ["Dashboard", LayoutDashboard, "report.view", "WORKSPACE"],
-        ["Subscribers", Users, "subscriber.view", ""],
-        ["Billing", FileText, "subscriber.view", ""],
-        ["Payments", CreditCard, "subscriber.view", ""],
-        ["GCash Verification", ShieldCheck, "payment.verify", ""],
-        ["Collections", Truck, "collection.view", ""],
-        ["Receivables", ChartNoAxesCombined, "report.view", ""],
-        ["Services", Wifi, "service.view", ""],
-        ["Reports", ChartNoAxesCombined, "report.view", "MANAGEMENT"],
-        ["Administration", Settings, "user.manage", ""],
-        ["Audit Trail", Activity, "audit.view", ""],
-      ];
+    : collectionSupervisor
+      ? [
+          ["Dashboard", LayoutDashboard, "collection.view", "OVERVIEW"],
+          ["Areas & Routes", MapPin, "collection.view", "COLLECTIONS"],
+          ["Batches", Truck, "collection.view", "COLLECTIONS"],
+          [
+            "Remittance & Reconciliation",
+            ClipboardCheck,
+            "collection.view",
+            "COLLECTIONS",
+          ],
+          [
+            "Collector Performance",
+            TrendingUp,
+            "collection.view",
+            "COLLECTIONS",
+          ],
+          ["Ledger", BookOpen, "ledger.view", "ACCOUNTS & REPORTS"],
+        ]
+      : auditor
+        ? [
+            ["Dashboard", LayoutDashboard, "audit.view", "OVERVIEW"],
+            ["Adjustments & Reversals", RotateCcw, "audit.view", "AUDIT"],
+            ["Audit Trail", Activity, "audit.view", "AUDIT"],
+            ["Receivables", HandCoins, "report.view", "ACCOUNTS & REPORTS"],
+            [
+              "Reports",
+              ChartNoAxesCombined,
+              "report.view",
+              "ACCOUNTS & REPORTS",
+            ],
+          ]
+        : systemAdmin
+          ? [
+              ["Dashboard", LayoutDashboard, "system.view", "OVERVIEW"],
+              ["User Management", UserCog, "user.manage", "ACCESS & SECURITY"],
+              [
+                "Security Audit",
+                ShieldCheck,
+                "security.view",
+                "ACCESS & SECURITY",
+              ],
+              ["Backup Restore", Database, "backup.restore", "SYSTEM"],
+              ["System Settings", Settings, "system.settings", "SYSTEM"],
+            ]
+          : [
+              ["Dashboard", LayoutDashboard, "report.view", "OVERVIEW"],
+              ["Subscribers", Users, "subscriber.view", "CUSTOMERS"],
+              ["Services", Wifi, "service.view", "CUSTOMERS"],
+              ["Billing", FileText, "subscriber.view", "BILLING & PAYMENTS"],
+              ["Payments", CreditCard, "subscriber.view", "BILLING & PAYMENTS"],
+              [
+                "GCash Verification",
+                BadgeCheck,
+                "payment.verify",
+                "BILLING & PAYMENTS",
+              ],
+              ["Collections", Truck, "collection.view", "COLLECTIONS"],
+              ["Areas & Routes", MapPin, "collection.view", "COLLECTIONS"],
+              [
+                "Remittance & Reconciliation",
+                ClipboardCheck,
+                "collection.view",
+                "COLLECTIONS",
+              ],
+              [
+                "Collector Performance",
+                TrendingUp,
+                "collection.view",
+                "COLLECTIONS",
+              ],
+              ["Receivables", HandCoins, "report.view", "ACCOUNTS & REPORTS"],
+              ["Ledger", BookOpen, "ledger.view", "ACCOUNTS & REPORTS"],
+              [
+                "Reports",
+                ChartNoAxesCombined,
+                "report.view",
+                "ACCOUNTS & REPORTS",
+              ],
+              ["Adjustments & Reversals", RotateCcw, "audit.view", "AUDIT"],
+              ["Audit Trail", Activity, "audit.view", "AUDIT"],
+              ["Administration", UserCog, "user.manage", "ADMINISTRATION"],
+            ];
   const rows = Array.isArray(data) ? data : data?.rows || [];
   return (
     <div className="app">
       <aside>
         <div className="brand">
           <div className="brand-mark">
-            <Wifi size={24} />
+            {branding.logo ? (
+              <img src={branding.logo} alt="System logo" />
+            ) : (
+              <Wifi size={24} />
+            )}
           </div>
           <div>
             <span
@@ -517,7 +608,15 @@ function App() {
               {user.system?.displayName || "BCIS"}
             </span>
             <small>
-              {systemAdmin ? "System administration" : "Billing & Collections"}
+              {systemAdmin
+                ? "System administration"
+                : collectionSupervisor
+                  ? "Collection supervision"
+                  : auditor
+                    ? "Audit & review"
+                    : technician
+                      ? "Field service"
+                      : "Billing & Collections"}
             </small>
           </div>
         </div>
@@ -527,9 +626,11 @@ function App() {
         <nav>
           {nav
             .filter((n) => can(n[2]))
-            .map(([label, Icon, , section]) => (
+            .map(([label, Icon, , section], i, visible) => (
               <React.Fragment key={label}>
-                {section && <div className="nav-label">{section}</div>}
+                {section !== visible[i - 1]?.[3] && (
+                  <div className="nav-label">{section}</div>
+                )}
                 <button
                   aria-label={label}
                   className={page === label ? "active" : ""}
@@ -612,7 +713,13 @@ function App() {
                 {page === "Dashboard"
                   ? systemAdmin
                     ? "System dashboard"
-                    : "Overview"
+                    : collectionSupervisor
+                      ? "Collection overview"
+                      : auditor
+                        ? "Audit overview"
+                        : technician
+                          ? "Field overview"
+                          : "Overview"
                   : page}
               </h1>
               <p>
@@ -621,7 +728,13 @@ function App() {
                     {
                       Dashboard: systemAdmin
                         ? "System health, user access, and backup status."
-                        : "Your billing and collection performance, at a glance.",
+                        : collectionSupervisor
+                          ? "Batches in the field, remittances to check, and collector results."
+                          : auditor
+                            ? "Corrections, receivables, and audit activity to review."
+                            : technician
+                              ? "Reconnections to complete and service status in the field."
+                              : "Your billing and collection performance, at a glance.",
                       "User Management": "Manage user accounts and access.",
                       "Security Audit":
                         "Review sign-ins and system administration activity.",
@@ -638,6 +751,24 @@ function App() {
                         "Review payment evidence before posting to the ledger.",
                       Collections:
                         "From assigned routes to accountable remittances.",
+                      Batches:
+                        "Create route batches and follow each one to remittance.",
+                      "Areas & Routes":
+                        "Collection areas, assigned collectors, and outstanding balances.",
+                      "Remittance & Reconciliation":
+                        "Record collector remittances and reconcile every batch.",
+                      "Service Accounts":
+                        "Look up service accounts, installation addresses and status.",
+                      Suspensions:
+                        "Disconnected services and accounts due for suspension.",
+                      Reconnections:
+                        "Complete reconnection requests after restoring service.",
+                      Ledger:
+                        "Find a subscriber to review their full ledger and export a statement of account.",
+                      "Adjustments & Reversals":
+                        "Review every payment reversal, invoice adjustment and void.",
+                      "Collector Performance":
+                        "Compare collectors by amount collected, rate, and remittance accuracy.",
                       Receivables:
                         "Stay ahead of outstanding balances and overdue accounts.",
                       Services:
@@ -695,11 +826,12 @@ function App() {
                   </button>
                 </>
               )}
-              {page === "Collections" && can("collection.manage") && (
-                <button className="primary" onClick={() => setModal("batch")}>
-                  <Plus size={17} /> New batch
-                </button>
-              )}
+              {["Collections", "Batches"].includes(page) &&
+                can("collection.manage") && (
+                  <button className="primary" onClick={() => setModal("batch")}>
+                    <Plus size={17} /> New batch
+                  </button>
+                )}
               {["Administration", "User Management"].includes(page) && (
                 <button className="primary" onClick={() => setModal("user")}>
                   <Plus size={17} /> Add team member
@@ -742,120 +874,269 @@ function App() {
                   pictureSaved={(image) =>
                     setUser({ ...user, profile_image: image })
                   }
+                  logo={branding.logo}
+                  logoSaved={(logo, logoVersion) => {
+                    logoVersionRef.current = logoVersion;
+                    setBranding((b) => ({ ...b, logo, logoVersion }));
+                  }}
                   request={api}
                   saved={async (value) => {
                     setUser({ ...user, system: value });
+                    setBranding((b) => ({
+                      ...b,
+                      businessName: value.businessName || b.businessName,
+                    }));
                     setThemeColor(value.themeColor || defaultTheme);
                     await reload();
                   }}
                 />
               )}
-              {page === "Dashboard" && !systemAdmin && (
-                <>
-                  <div className="kpis">
-                    {[
-                      [
-                        "Outstanding receivable",
-                        money(data.kpis.receivable),
-                        "Across all billed accounts",
-                        Wallet,
-                      ],
-                      [
-                        "Collected this month",
-                        money(data.kpis.collected),
-                        "Posted, non-reversed payments",
-                        CreditCard,
-                      ],
-                      [
-                        "Overdue balance",
-                        money(data.kpis.overdue),
-                        `${data.kpis.overdue_accounts} accounts need attention`,
-                        Activity,
-                      ],
-                      [
-                        "Active subscribers",
-                        Number(data.kpis.subscribers).toLocaleString(),
-                        "Connected to BCIS",
-                        Users,
-                      ],
-                    ].map(([label, value, sub, Icon]: any, i) => (
-                      <div className="kpi" key={label}>
-                        <div>
-                          {label}
-                          <Icon size={18} />
-                        </div>
-                        <strong>{value}</strong>
-                        <small className={i === 2 ? "amber" : ""}>{sub}</small>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="dashboard-grid">
-                    <section className="panel trend">
-                      <div className="panel-head">
-                        <div>
-                          <h2>Billing vs. collection</h2>
-                          <p>Your last six months of activity</p>
-                        </div>
-                        <div className="legend">
-                          <span>
-                            <i />
-                            Billed
-                          </span>
-                          <span>
-                            <i className="light" />
-                            Collected
-                          </span>
-                        </div>
-                      </div>
-                      <div className="chart">
-                        {data.trend.map((r: Row) => {
-                          const max = Math.max(
-                            1,
-                            ...data.trend.flatMap((t: Row) => [
-                              Number(t.billed),
-                              Number(t.collected),
-                            ]),
-                          );
-                          return (
-                            <div className="chart-group" key={r.month}>
-                              <div className="bars">
-                                <div
-                                  title={money(r.billed)}
-                                  style={{
-                                    height: `${Math.max(1, (Number(r.billed) / max) * 100)}%`,
-                                  }}
-                                />
-                                <div
-                                  title={money(r.collected)}
-                                  style={{
-                                    height: `${Math.max(1, (Number(r.collected) / max) * 100)}%`,
-                                  }}
-                                />
-                              </div>
-                              <span>{r.month}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                    <section className="panel">
-                      <div className="panel-head">
-                        <div>
-                          <h2>Payment methods</h2>
-                          <p>Collections this month</p>
-                        </div>
-                        <CreditCard size={18} />
-                      </div>
-                      <div className="method-total">
-                        {money(data.kpis.collected)}
-                        <small>Total collected</small>
-                      </div>
-                      {data.methods.map((r: Row, i: number) => (
-                        <div className="method" key={r.method}>
+              {page === "Dashboard" && collectionSupervisor && (
+                <CollectionOverview
+                  data={data}
+                  navigate={navigate}
+                  openBatch={(b) => {
+                    setSelected(b);
+                    setModal("reconcile");
+                  }}
+                />
+              )}
+              {page === "Areas & Routes" && (
+                <AreasRoutes
+                  data={data}
+                  canManage={Boolean(can("collection.manage"))}
+                  openModal={setModal}
+                />
+              )}
+              {page === "Dashboard" && auditor && (
+                <AuditOverview data={data} navigate={navigate} />
+              )}
+              {page === "Dashboard" && technician && (
+                <FieldOverview
+                  data={data}
+                  navigate={navigate}
+                  userId={user.id}
+                  complete={async (id: number) =>
+                    run(async () => {
+                      await api(`/reconnections/${id}/complete`, {});
+                      await reload();
+                      setNotice(
+                        "Reconnection completed. The service is active again.",
+                      );
+                    })
+                  }
+                />
+              )}
+              {page === "Service Accounts" && (
+                <ServiceAccounts
+                  rows={rows}
+                  search={search}
+                  setSearch={setSearch}
+                  status={fieldStatus}
+                  setStatus={setFieldStatus}
+                />
+              )}
+              {page === "Suspensions" && <Suspensions data={data} />}
+              {page === "Reconnections" && (
+                <Reconnections
+                  rows={rows}
+                  view={reconView}
+                  setView={setReconView}
+                  userId={user.id}
+                  complete={async (id: number) =>
+                    run(async () => {
+                      await api(`/reconnections/${id}/complete`, {});
+                      await reload();
+                      setNotice(
+                        "Reconnection completed. The service is active again.",
+                      );
+                    })
+                  }
+                />
+              )}
+              {page === "Ledger" && (
+                <Ledger
+                  rows={rows}
+                  search={search}
+                  setSearch={setSearch}
+                  from={from}
+                  to={to}
+                  setFrom={setFrom}
+                  setTo={setTo}
+                  request={api}
+                  download={download}
+                  selectedId={ledgerId}
+                  setSelectedId={setLedgerId}
+                />
+              )}
+              {page === "Adjustments & Reversals" && (
+                <Corrections
+                  data={data}
+                  kind={correctionKind}
+                  setKind={(v) => {
+                    setCorrectionKind(v);
+                    setPageNo(1);
+                  }}
+                  search={search}
+                  setSearch={setSearch}
+                  from={from}
+                  to={to}
+                  setFrom={setFrom}
+                  setTo={setTo}
+                  canCorrect={Boolean(can("payment.reverse"))}
+                  request={api}
+                  openCorrection={(m, r) => {
+                    setSelected(r);
+                    setModal(m);
+                  }}
+                />
+              )}
+              {page === "Remittance & Reconciliation" && (
+                <Remittances
+                  data={data}
+                  openBatch={(b) => {
+                    setSelected(b);
+                    setModal("reconcile");
+                  }}
+                />
+              )}
+              {page === "Collector Performance" && (
+                <CollectorPerformance
+                  data={data}
+                  from={from}
+                  to={to}
+                  setFrom={setFrom}
+                  setTo={setTo}
+                  download={download}
+                />
+              )}
+              {page === "Dashboard" &&
+                !systemAdmin &&
+                !collectionSupervisor &&
+                !auditor &&
+                !technician && (
+                  <>
+                    <div className="kpis">
+                      {[
+                        [
+                          "Outstanding receivable",
+                          money(data.kpis.receivable),
+                          "Across all billed accounts",
+                          Wallet,
+                        ],
+                        [
+                          "Collected this month",
+                          money(data.kpis.collected),
+                          "Posted, non-reversed payments",
+                          CreditCard,
+                        ],
+                        [
+                          "Overdue balance",
+                          money(data.kpis.overdue),
+                          `${data.kpis.overdue_accounts} accounts need attention`,
+                          Activity,
+                        ],
+                        [
+                          "Active subscribers",
+                          Number(data.kpis.subscribers).toLocaleString(),
+                          "Connected to BCIS",
+                          Users,
+                        ],
+                      ].map(([label, value, sub, Icon]: any, i) => (
+                        <div className="kpi" key={label}>
                           <div>
+                            {label}
+                            <Icon size={18} />
+                          </div>
+                          <strong>{value}</strong>
+                          <small className={i === 2 ? "amber" : ""}>
+                            {sub}
+                          </small>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="dashboard-grid">
+                      <section className="panel trend">
+                        <div className="panel-head">
+                          <div>
+                            <h2>Billing vs. collection</h2>
+                            <p>Your last six months of activity</p>
+                          </div>
+                          <div className="legend">
                             <span>
-                              <i
+                              <i />
+                              Billed
+                            </span>
+                            <span>
+                              <i className="light" />
+                              Collected
+                            </span>
+                          </div>
+                        </div>
+                        <div className="chart">
+                          {data.trend.map((r: Row) => {
+                            const max = Math.max(
+                              1,
+                              ...data.trend.flatMap((t: Row) => [
+                                Number(t.billed),
+                                Number(t.collected),
+                              ]),
+                            );
+                            return (
+                              <div className="chart-group" key={r.month}>
+                                <div className="bars">
+                                  <div
+                                    title={money(r.billed)}
+                                    style={{
+                                      height: `${Math.max(1, (Number(r.billed) / max) * 100)}%`,
+                                    }}
+                                  />
+                                  <div
+                                    title={money(r.collected)}
+                                    style={{
+                                      height: `${Math.max(1, (Number(r.collected) / max) * 100)}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span>{r.month}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                      <section className="panel">
+                        <div className="panel-head">
+                          <div>
+                            <h2>Payment methods</h2>
+                            <p>Collections this month</p>
+                          </div>
+                          <CreditCard size={18} />
+                        </div>
+                        <div className="method-total">
+                          {money(data.kpis.collected)}
+                          <small>Total collected</small>
+                        </div>
+                        {data.methods.map((r: Row, i: number) => (
+                          <div className="method" key={r.method}>
+                            <div>
+                              <span>
+                                <i
+                                  style={{
+                                    background: [
+                                      "var(--theme)",
+                                      "#14b8a6",
+                                      "#8b5cf6",
+                                    ][i % 3],
+                                  }}
+                                />
+                                {r.method}
+                              </span>
+                              <strong>{money(r.total)}</strong>
+                            </div>
+                            <div className="progress">
+                              <span
                                 style={{
+                                  width: `${(Number(r.total) / Math.max(1, Number(data.kpis.collected))) * 100}%`,
                                   background: [
                                     "var(--theme)",
                                     "#14b8a6",
@@ -863,165 +1144,150 @@ function App() {
                                   ][i % 3],
                                 }}
                               />
-                              {r.method}
-                            </span>
-                            <strong>{money(r.total)}</strong>
+                            </div>
                           </div>
-                          <div className="progress">
-                            <span
-                              style={{
-                                width: `${(Number(r.total) / Math.max(1, Number(data.kpis.collected))) * 100}%`,
-                                background: [
-                                  "var(--theme)",
-                                  "#14b8a6",
-                                  "#8b5cf6",
-                                ][i % 3],
-                              }}
-                            />
+                        ))}
+                      </section>
+                      <section className="panel">
+                        <div className="panel-head">
+                          <div>
+                            <h2>Receivables aging</h2>
+                            <p>Outstanding invoice balances</p>
                           </div>
+                          <button
+                            className="link"
+                            onClick={() => navigate("Receivables")}
+                          >
+                            View accounts <ArrowUpRight size={15} />
+                          </button>
                         </div>
-                      ))}
-                    </section>
-                    <section className="panel">
-                      <div className="panel-head">
-                        <div>
-                          <h2>Receivables aging</h2>
-                          <p>Outstanding invoice balances</p>
-                        </div>
-                        <button
-                          className="link"
-                          onClick={() => navigate("Receivables")}
-                        >
-                          View accounts <ArrowUpRight size={15} />
-                        </button>
-                      </div>
-                      <div className="aging">
-                        {["Current", "1–30", "31–60", "61–90", "90+"].map(
-                          (b, i) => {
-                            const total =
-                              data.aging.find((r: Row) => r.bucket === b)
-                                ?.total || 0;
-                            return (
-                              <div key={b}>
-                                <span>
-                                  {b}
-                                  {i > 0 ? " days" : ""}
-                                </span>
-                                <div className="progress">
-                                  <span
-                                    style={{
-                                      width: `${Math.max(1, (Number(total) / Math.max(1, Number(data.kpis.receivable))) * 100)}%`,
-                                      background: [
-                                        "var(--theme)",
-                                        "color-mix(in srgb, var(--theme) 55%, white)",
-                                        "#fbbf24",
-                                        "#f59e0b",
-                                        "#ef4444",
-                                      ][i],
-                                    }}
-                                  />
+                        <div className="aging">
+                          {["Current", "1–30", "31–60", "61–90", "90+"].map(
+                            (b, i) => {
+                              const total =
+                                data.aging.find((r: Row) => r.bucket === b)
+                                  ?.total || 0;
+                              return (
+                                <div key={b}>
+                                  <span>
+                                    {b}
+                                    {i > 0 ? " days" : ""}
+                                  </span>
+                                  <div className="progress">
+                                    <span
+                                      style={{
+                                        width: `${Math.max(1, (Number(total) / Math.max(1, Number(data.kpis.receivable))) * 100)}%`,
+                                        background: [
+                                          "var(--theme)",
+                                          "color-mix(in srgb, var(--theme) 55%, white)",
+                                          "#fbbf24",
+                                          "#f59e0b",
+                                          "#ef4444",
+                                        ][i],
+                                      }}
+                                    />
+                                  </div>
+                                  <strong>{money(total)}</strong>
                                 </div>
-                                <strong>{money(total)}</strong>
-                              </div>
-                            );
-                          },
-                        )}
-                      </div>
-                    </section>
-                    <section className="panel">
-                      <div className="panel-head">
-                        <div>
-                          <h2>Needs attention</h2>
-                          <p>Keep operations moving</p>
+                              );
+                            },
+                          )}
                         </div>
-                        <Bell size={18} />
-                      </div>
-                      <button
-                        className="alert-row"
-                        onClick={() => navigate("Receivables")}
-                      >
-                        <span className="alert-icon">
-                          <Activity size={18} />
-                        </span>
-                        <div>
-                          <strong>
-                            {data.kpis.overdue_accounts} overdue accounts
-                          </strong>
-                          <small>Review balances and follow up</small>
+                      </section>
+                      <section className="panel">
+                        <div className="panel-head">
+                          <div>
+                            <h2>Needs attention</h2>
+                            <p>Keep operations moving</p>
+                          </div>
+                          <Bell size={18} />
                         </div>
-                        <ChevronRight size={17} />
-                      </button>
-                      {can("payment.verify") && (
                         <button
                           className="alert-row"
-                          onClick={() => navigate("GCash Verification")}
+                          onClick={() => navigate("Receivables")}
                         >
-                          <span className="alert-icon blue">
-                            <ShieldCheck size={18} />
+                          <span className="alert-icon">
+                            <Activity size={18} />
                           </span>
                           <div>
                             <strong>
-                              {data.kpis.pending_proofs} GCash proofs pending
+                              {data.kpis.overdue_accounts} overdue accounts
                             </strong>
-                            <small>Verify before posting payments</small>
+                            <small>Review balances and follow up</small>
                           </div>
                           <ChevronRight size={17} />
                         </button>
-                      )}
-                      <div className="info-note">
-                        <ShieldCheck size={16} /> Financial activity is recorded
-                        in the audit trail.
-                      </div>
-                    </section>
-                    <section className="panel recent">
-                      <div className="panel-head">
-                        <div>
-                          <h2>Collector performance</h2>
-                          <p>Posted field collections by assigned batch</p>
-                        </div>
-                      </div>
-                      <Table
-                        rows={data.collectors}
-                        columns={[
-                          ["name", "Collector"],
-                          ["accounts", "Accounts collected"],
-                          ["total", "Collected", (r) => money(r.total)],
-                        ]}
-                      />
-                    </section>
-                    <section className="panel recent">
-                      <div className="panel-head">
-                        <div>
-                          <h2>Recent payments</h2>
-                          <p>Latest posted collections</p>
-                        </div>
-                        {can("subscriber.view") && (
+                        {can("payment.verify") && (
                           <button
-                            className="link"
-                            onClick={() => navigate("Payments")}
+                            className="alert-row"
+                            onClick={() => navigate("GCash Verification")}
                           >
-                            View all <ArrowUpRight size={15} />
+                            <span className="alert-icon blue">
+                              <ShieldCheck size={18} />
+                            </span>
+                            <div>
+                              <strong>
+                                {data.kpis.pending_proofs} GCash proofs pending
+                              </strong>
+                              <small>Verify before posting payments</small>
+                            </div>
+                            <ChevronRight size={17} />
                           </button>
                         )}
-                      </div>
-                      <Table
-                        rows={data.recent}
-                        columns={[
-                          ["receipt_no", "Receipt"],
-                          ["name", "Subscriber"],
-                          [
-                            "method",
-                            "Method",
-                            (r) => <Badge value={r.method} />,
-                          ],
-                          ["paid_at", "Date", (r) => date(r.paid_at)],
-                          ["amount", "Amount", (r) => money(r.amount)],
-                        ]}
-                      />
-                    </section>
-                  </div>
-                </>
-              )}
+                        <div className="info-note">
+                          <ShieldCheck size={16} /> Financial activity is
+                          recorded in the audit trail.
+                        </div>
+                      </section>
+                      <section className="panel recent">
+                        <div className="panel-head">
+                          <div>
+                            <h2>Collector performance</h2>
+                            <p>Posted field collections by assigned batch</p>
+                          </div>
+                        </div>
+                        <Table
+                          rows={data.collectors}
+                          columns={[
+                            ["name", "Collector"],
+                            ["accounts", "Accounts collected"],
+                            ["total", "Collected", (r) => money(r.total)],
+                          ]}
+                        />
+                      </section>
+                      <section className="panel recent">
+                        <div className="panel-head">
+                          <div>
+                            <h2>Recent payments</h2>
+                            <p>Latest posted collections</p>
+                          </div>
+                          {can("subscriber.view") && (
+                            <button
+                              className="link"
+                              onClick={() => navigate("Payments")}
+                            >
+                              View all <ArrowUpRight size={15} />
+                            </button>
+                          )}
+                        </div>
+                        <Table
+                          rows={data.recent}
+                          columns={[
+                            ["receipt_no", "Receipt"],
+                            ["name", "Subscriber"],
+                            [
+                              "method",
+                              "Method",
+                              (r) => <Badge value={r.method} />,
+                            ],
+                            ["paid_at", "Date", (r) => date(r.paid_at)],
+                            ["amount", "Amount", (r) => money(r.amount)],
+                          ]}
+                        />
+                      </section>
+                    </div>
+                  </>
+                )}
               {[
                 "Subscribers",
                 "Billing",
@@ -1554,7 +1820,7 @@ function App() {
                   </section>
                 </div>
               )}
-              {page === "Collections" && (
+              {["Collections", "Batches"].includes(page) && (
                 <>
                   <div className="collection-kpis">
                     <div className="mini-stat">
@@ -2062,8 +2328,35 @@ function App() {
             )}
             {modal === "receipt" && selected && (
               <div className="receipt printable">
-                <div className="receipt-brand">BCIS</div>
-                <h3>Bukidnon Cable and Internet Services</h3>
+                <div
+                  className={
+                    branding.logo ? "receipt-brand has-logo" : "receipt-brand"
+                  }
+                >
+                  {branding.logo ? (
+                    <img src={branding.logo} alt="System logo" />
+                  ) : (
+                    user.system?.displayName || "BCIS"
+                  )}
+                </div>
+                <h3>{user.system?.businessName || branding.businessName}</h3>
+                {[
+                  user.system?.address,
+                  user.system?.contactNumber,
+                  user.system?.email,
+                  user.system?.tin && `TIN ${user.system.tin}`,
+                ].some(Boolean) && (
+                  <p className="receipt-business">
+                    {[
+                      user.system?.address,
+                      user.system?.contactNumber,
+                      user.system?.email,
+                      user.system?.tin && `TIN ${user.system.tin}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
                 <p>Payment acknowledgment · {selected.receipt_no}</p>
                 <hr />
                 <dl>
@@ -2083,7 +2376,9 @@ function App() {
                 <div className="receipt-total">
                   Amount received<strong>{money(selected.amount)}</strong>
                 </div>
-                <p>Thank you for choosing BCIS.</p>
+                <p>
+                  Thank you for choosing {user.system?.displayName || "BCIS"}.
+                </p>
                 <button
                   className="primary no-print"
                   onClick={() => window.print()}

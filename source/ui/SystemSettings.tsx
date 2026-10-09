@@ -1,4 +1,5 @@
 import { ProfilePicture } from "./ProfilePicture";
+import { SystemLogo } from "./SystemLogo";
 import { defaultTheme, themeStyle } from "./theme";
 import React, { useEffect, useState } from "react";
 import {
@@ -9,48 +10,101 @@ import {
   Clock,
   CheckCircle2,
   Save,
+  Landmark,
 } from "lucide-react";
 type Values = {
   displayName: string;
   supportContact: string;
   themeColor?: string;
+  businessName: string;
+  address: string;
+  contactNumber: string;
+  email: string;
+  tin: string;
 };
+const fromData = (data: Partial<Values>): Values => ({
+  displayName: data.displayName ?? "",
+  supportContact: data.supportContact ?? "",
+  themeColor: data.themeColor || defaultTheme,
+  businessName: data.businessName ?? "",
+  address: data.address ?? "",
+  contactNumber: data.contactNumber ?? "",
+  email: data.email ?? "",
+  tin: data.tin ?? "",
+});
+const businessFields: [keyof Values, string, string, number, string][] = [
+  [
+    "businessName",
+    "Registered business name",
+    "Printed on receipts, report headers and the sign-in screen.",
+    200,
+    "",
+  ],
+  [
+    "address",
+    "Business address",
+    "Street, barangay, city and province.",
+    300,
+    "",
+  ],
+  ["contactNumber", "Contact number", "Landline or mobile number.", 100, ""],
+  ["email", "Business email", "For subscriber and billing inquiries.", 200, ""],
+  [
+    "tin",
+    "Tax Identification Number (TIN)",
+    "Format 000-000-000-000.",
+    17,
+    "000-000-000-000",
+  ],
+];
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const tinPattern = /^(\d{3}-\d{3}-\d{3}(-\d{3,5})?)?$/;
 export function SystemSettings({
   data,
   request,
   saved,
   user,
   pictureSaved,
+  logo,
+  logoSaved,
 }: {
   data: Values & { updated?: { created_at: string; actor: string } | null };
   request: (url: string, body?: unknown) => Promise<any>;
   saved: (v: Values) => Promise<void>;
   user: any;
   pictureSaved: (image: string | null) => void;
+  logo: string | null;
+  logoSaved: (logo: string | null, logoVersion: string | null) => void;
 }) {
-  const [values, setValues] = useState<Values>({
-    displayName: data.displayName,
-    supportContact: data.supportContact,
-    themeColor: data.themeColor || defaultTheme,
-  });
+  const [values, setValues] = useState<Values>(fromData(data));
+  const [logoDraft, setLogoDraft] = useState<string | null>(logo);
+  const original = fromData(data);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   useEffect(() => {
-    setValues({
-      displayName: data.displayName,
-      supportContact: data.supportContact,
-      themeColor: data.themeColor || defaultTheme,
-    });
-  }, [data.displayName, data.supportContact, data.themeColor]);
-  const dirty =
-    values.displayName !== data.displayName ||
-    values.supportContact !== data.supportContact ||
-    values.themeColor !== (data.themeColor || defaultTheme);
+    setValues(fromData(data));
+  }, [JSON.stringify(original)]);
+  const dirty = (Object.keys(original) as (keyof Values)[]).some(
+    (k) => values[k] !== original[k],
+  );
+  const fieldError: Partial<Record<keyof Values, string>> = {
+    businessName: values.businessName.trim()
+      ? ""
+      : "Enter the registered business name.",
+    email:
+      values.email.trim() && !emailPattern.test(values.email.trim())
+        ? "Enter a valid email address."
+        : "",
+    tin: tinPattern.test(values.tin.trim())
+      ? ""
+      : "Use the format 000-000-000 or 000-000-000-000.",
+  };
   const valid =
     values.displayName.trim().length > 0 &&
     values.displayName.length <= 200 &&
-    values.supportContact.length <= 200;
+    values.supportContact.length <= 200 &&
+    !Object.values(fieldError).some(Boolean);
   useEffect(() => {
     const before = (e: BeforeUnloadEvent) => {
       if (dirty) {
@@ -69,7 +123,10 @@ export function SystemSettings({
         </div>
         <div>
           <h2>System preferences</h2>
-          <p>Manage workspace identity and staff support information.</p>
+          <p>
+            Manage the system profile, workspace identity and staff support
+            information.
+          </p>
         </div>
         <span className="audit-readonly">Administrator controls</span>
       </section>
@@ -83,6 +140,12 @@ export function SystemSettings({
           {notice}
         </div>
       )}
+      <SystemLogo
+        logo={logo}
+        request={request}
+        saved={logoSaved}
+        onDraft={setLogoDraft}
+      />
       <ProfilePicture user={user} request={request} saved={pictureSaved} />
       <form
         onSubmit={async (e) => {
@@ -96,11 +159,16 @@ export function SystemSettings({
               displayName: values.displayName.trim(),
               supportContact: values.supportContact.trim(),
               themeColor: values.themeColor,
+              businessName: values.businessName.trim(),
+              address: values.address.trim(),
+              contactNumber: values.contactNumber.trim(),
+              email: values.email.trim(),
+              tin: values.tin.trim(),
             });
             await saved(result);
-            setValues(result);
+            setValues(fromData(result));
             setNotice(
-              "System settings saved. Workspace identity and support information are updated.",
+              "System settings saved. The system profile, workspace identity and support information are updated.",
             );
           } catch (e) {
             setError((e as Error).message);
@@ -203,6 +271,51 @@ export function SystemSettings({
             </section>
             <section className="panel settings-section">
               <div className="settings-section-heading">
+                <Landmark size={21} />
+                <div>
+                  <h3>Business profile</h3>
+                  <p>Company details printed on receipts and reports.</p>
+                </div>
+              </div>
+              {businessFields.map(([key, label, help, max, placeholder]) => (
+                <div className="settings-field" key={key}>
+                  <label htmlFor={`system-${key}`}>
+                    {label}{" "}
+                    {key === "businessName" ? (
+                      <span>*</span>
+                    ) : (
+                      <span className="optional">Optional</span>
+                    )}
+                  </label>
+                  <input
+                    id={`system-${key}`}
+                    required={key === "businessName"}
+                    type={key === "email" ? "email" : "text"}
+                    maxLength={max}
+                    placeholder={placeholder}
+                    disabled={busy}
+                    value={values[key]}
+                    aria-invalid={Boolean(fieldError[key])}
+                    aria-describedby={`system-${key}-help`}
+                    onChange={(e) => {
+                      setValues({ ...values, [key]: e.target.value });
+                      setNotice("");
+                    }}
+                  />
+                  <div className="settings-field-help">
+                    <span id={`system-${key}-help`}>{help}</span>
+                    <span>
+                      {String(values[key] ?? "").length}/{max}
+                    </span>
+                  </div>
+                  {fieldError[key] && (
+                    <p className="settings-validation">{fieldError[key]}</p>
+                  )}
+                </div>
+              ))}
+            </section>
+            <section className="panel settings-section">
+              <div className="settings-section-heading">
                 <LifeBuoy size={21} />
                 <div>
                   <h3>Staff support</h3>
@@ -264,10 +377,33 @@ export function SystemSettings({
               style={themeStyle(values.themeColor || defaultTheme)}
             >
               <div className="settings-preview-mark">
-                <Settings size={24} />
+                {logoDraft ? (
+                  <img src={logoDraft} alt="System logo" />
+                ) : (
+                  <Settings size={24} />
+                )}
               </div>
               <strong>{values.displayName.trim() || "Your system name"}</strong>
-              <small>System administration</small>
+              <small>
+                {values.businessName.trim() || "Registered business name"}
+              </small>
+              {[
+                values.address.trim(),
+                values.contactNumber.trim(),
+                values.email.trim(),
+                values.tin.trim() && `TIN ${values.tin.trim()}`,
+              ].some(Boolean) && (
+                <p className="settings-preview-business">
+                  {[
+                    values.address.trim(),
+                    values.contactNumber.trim(),
+                    values.email.trim(),
+                    values.tin.trim() && `TIN ${values.tin.trim()}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
               <button type="button" className="primary theme-preview-button">
                 Button preview
               </button>
@@ -312,11 +448,7 @@ export function SystemSettings({
             type="button"
             disabled={busy || !dirty}
             onClick={() => {
-              setValues({
-                displayName: data.displayName,
-                supportContact: data.supportContact,
-                themeColor: data.themeColor || defaultTheme,
-              });
+              setValues(fromData(data));
               setError("");
               setNotice("");
             }}

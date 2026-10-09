@@ -18,9 +18,22 @@ import {
   lockSubscriber,
   applyCredit,
 } from "./finance.js";
-import { rolePermissions, aging } from "../shared/domain.js";
+import {
+  rolePermissions,
+  aging,
+  manilaDate,
+  manilaDateWindow,
+} from "../shared/domain.js";
 import { exportReport } from "./reports.js";
 import { createBackup, verifyBackup } from "./backup.js";
+import {
+  imageBytes,
+  logoVersion,
+  profileFields,
+  systemLogo,
+  systemLogoVersion,
+  systemProfile,
+} from "./system-profile.js";
 declare module "fastify" {
   interface FastifyRequest {
     actor: { id: number; name: string; permissions: string[]; roles: string[] };
@@ -30,6 +43,37 @@ const id = z.coerce.number().int().positive();
 const amount = z.number().int().positive().max(999999999999);
 const reason = z.string().trim().min(5).max(1000);
 const text = z.string().trim().min(1).max(200);
+const batchSelect = `SELECT b.*,c.name AS collector,a.name AS area,r.remitted_cash,r.difference,COALESCE((SELECT sum(amount) FROM payments p WHERE p.batch_id=b.id AND method='Cash' AND NOT reversed),0) AS cash,COALESCE((SELECT sum(amount) FROM payments p WHERE p.batch_id=b.id AND method<>'Cash' AND NOT reversed),0) AS noncash FROM collection_batches b JOIN collectors c ON c.id=b.collector_id LEFT JOIN collection_areas a ON a.id=b.area_id LEFT JOIN collector_remittances r ON r.batch_id=b.id`;
+const collectorPerformance = `WITH bt AS (SELECT * FROM collection_batches WHERE created_at>=$1 AND created_at<$2),
+  agg AS (SELECT collector_id,count(*) AS batches,count(*) FILTER (WHERE status='CLOSED') AS closed,sum(expected) AS expected FROM bt GROUP BY collector_id),
+  paid AS (SELECT b.collector_id,sum(p.amount) AS collected,sum(p.amount) FILTER (WHERE p.method='Cash') AS cash,count(DISTINCT p.subscriber_id) AS accounts FROM payments p JOIN bt b ON b.id=p.batch_id WHERE NOT p.reversed GROUP BY b.collector_id),
+  rem AS (SELECT b.collector_id,sum(r.remitted_cash) AS remitted,sum(r.difference) AS difference,count(*) FILTER (WHERE r.difference<0) AS shortages FROM collector_remittances r JOIN bt b ON b.id=r.batch_id GROUP BY b.collector_id)
+  SELECT c.id,c.name,c.active,(SELECT count(*) FROM subscribers s WHERE s.collector_id=c.id AND s.status='ACTIVE') AS assigned,
+    COALESCE(agg.batches,0) AS batches,COALESCE(agg.closed,0) AS closed,COALESCE(agg.expected,0) AS expected,
+    COALESCE(paid.collected,0) AS collected,COALESCE(paid.cash,0) AS cash,COALESCE(paid.accounts,0) AS accounts,
+    COALESCE(rem.remitted,0) AS remitted,COALESCE(rem.difference,0) AS difference,COALESCE(rem.shortages,0) AS shortages
+  FROM collectors c LEFT JOIN agg ON agg.collector_id=c.id LEFT JOIN paid ON paid.collector_id=c.id LEFT JOIN rem ON rem.collector_id=c.id
+  ORDER BY COALESCE(paid.collected,0) DESC,c.name`;
+const corrections = `SELECT * FROM (
+  SELECT 'REVERSAL' AS kind,r.id,r.created_at,p.id AS record_id,p.receipt_no AS reference,s.id AS subscriber_id,s.name AS subscriber,s.account_no,p.amount,r.reason,u.name AS actor,p.method AS detail
+  FROM payment_reversals r JOIN payments p ON p.id=r.payment_id JOIN subscribers s ON s.id=p.subscriber_id LEFT JOIN users u ON u.id=r.actor_id
+  UNION ALL
+  SELECT CASE WHEN a.reason LIKE 'VOID: %' THEN 'VOID' ELSE 'ADJUSTMENT' END,a.id,a.created_at,i.id,i.number,s.id,s.name,s.account_no,a.amount,
+    CASE WHEN a.reason LIKE 'VOID: %' THEN substr(a.reason,7) ELSE a.reason END,u.name,to_char(i.period,'YYYY-MM')
+  FROM adjustments a JOIN invoices i ON i.id=a.invoice_id JOIN service_accounts sa ON sa.id=i.service_id JOIN subscribers s ON s.id=sa.subscriber_id LEFT JOIN users u ON u.id=a.actor_id
+) c`;
+const fieldService = `SELECT s.id,s.account_no,s.status,s.address,s.activation_date,p.name AS plan,p.type AS plan_type,u.id AS subscriber_id,u.name AS subscriber,u.contact,a.name AS area
+  FROM service_accounts s JOIN service_plans p ON p.id=s.plan_id JOIN subscribers u ON u.id=s.subscriber_id LEFT JOIN collection_areas a ON a.id=u.area_id`;
+const overdueClear = `NOT EXISTS(SELECT 1 FROM invoice_balances i WHERE i.service_id=r.service_id AND i.due_date<CURRENT_DATE AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT'))`;
+/** Roles without financial access (e.g. Technician) only receive operational service fields. */
+const seesMoney = (req: any) =>
+  ["*", "subscriber.view", "report.view"].some((p) =>
+    req.actor.permissions.includes(p),
+  );
+const withoutMoney = (rows: any[], keys: string[]) =>
+  rows.map((r) =>
+    Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))),
+  );
 const paymentSchema = z.object({
   subscriberId: id,
   amount,
@@ -148,32 +192,20 @@ export async function buildApp() {
       { preHandler: requirePermission(permission) },
       handler,
     );
-  app.get("/api/appearance", async () => ({
-    themeColor:
-      (
-        await pool.query(
-          "SELECT value->>'themeColor' AS color FROM application_settings WHERE key='system'",
-        )
-      ).rows[0]?.color || "#2563eb",
-  }));
+  app.get("/api/appearance", async () => {
+    const profile = await systemProfile();
+    return {
+      themeColor: profile.themeColor || "#2563eb",
+      businessName: profile.businessName,
+      logoVersion: await systemLogoVersion(),
+    };
+  });
+  app.get("/api/appearance/logo", async () => ({ logo: await systemLogo() }));
   post("/me/profile-picture", "system.settings", async (req: any) => {
     const b = z
       .object({ image: z.string().max(500000).nullable() })
       .parse(req.body);
-    if (b.image !== null) {
-      const match =
-        /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(b.image);
-      if (!match) throw new Error("Upload a PNG or JPEG image.");
-      const bytes = Buffer.from(match[2], "base64");
-      const valid =
-        match[1] === "png"
-          ? bytes
-              .subarray(0, 8)
-              .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-          : bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
-      if (!valid || bytes.length > 350000)
-        throw new Error("Invalid image or image exceeds 350 KB.");
-    }
+    if (b.image !== null) imageBytes(b.image);
     await transaction(async (db) => {
       await db.query("UPDATE users SET profile_image=$1 WHERE id=$2", [
         b.image,
@@ -226,11 +258,7 @@ export async function buildApp() {
   );
   get("/me", "", async (req: any) => ({
     ...req.actor,
-    system: (
-      await pool.query(
-        "SELECT value FROM application_settings WHERE key='system'",
-      )
-    ).rows[0]?.value ?? { displayName: "BCIS", supportContact: "" },
+    system: await systemProfile(),
   }));
   post("/logout", "", async (req: any) => {
     await securityEvent(req, "auth.logout", "SUCCESS", req.actor.id);
@@ -246,7 +274,12 @@ export async function buildApp() {
     if (req.actor.roles.includes("Administrator"))
       return { plans: [], areas: [], collectors: [] };
     return {
-      plans: (await pool.query("SELECT * FROM service_plans ORDER BY id")).rows,
+      plans: seesMoney(req)
+        ? (await pool.query("SELECT * FROM service_plans ORDER BY id")).rows
+        : withoutMoney(
+            (await pool.query("SELECT * FROM service_plans ORDER BY id")).rows,
+            ["price", "fee"],
+          ),
       areas: (await pool.query("SELECT * FROM collection_areas ORDER BY name"))
         .rows,
       collectors: operational
@@ -625,12 +658,13 @@ export async function buildApp() {
     const q = z
       .object({ page: z.coerce.number().int().positive().default(1) })
       .parse(req.query);
-    return (
+    const rows = (
       await pool.query(
         "SELECT s.*,p.name AS plan FROM service_accounts s JOIN service_plans p ON p.id=s.plan_id ORDER BY s.id LIMIT 50 OFFSET $1",
         [(q.page - 1) * 50],
       )
     ).rows;
+    return seesMoney(req) ? rows : withoutMoney(rows, ["rate"]);
   });
   post("/services/:id/state", "service.manage", async (req: any) => {
     const b = z
@@ -703,16 +737,95 @@ export async function buildApp() {
       return { ok: true };
     });
   });
-  get(
-    "/suspension-candidates",
-    "service.view",
-    async () =>
-      (
-        await pool.query(
-          `SELECT s.id,s.account_no,s.address,s.status,u.name,min(i.due_date) AS oldest_due,sum(i.balance) AS outstanding FROM service_accounts s JOIN subscribers u ON u.id=s.subscriber_id JOIN invoice_balances i ON i.service_id=s.id WHERE s.status='ACTIVE' AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT') AND CURRENT_DATE-i.due_date>=COALESCE((SELECT (value->>'suspensionDays')::int FROM application_settings WHERE key='service_policy'),60)+COALESCE((SELECT (value->>'graceDays')::int FROM application_settings WHERE key='service_policy'),7) GROUP BY s.id,u.name ORDER BY min(i.due_date) LIMIT 100`,
-        )
-      ).rows,
-  );
+  get("/suspension-candidates", "service.view", async (req: any) => {
+    const rows = (
+      await pool.query(
+        `SELECT s.id,s.account_no,s.address,s.status,u.name,min(i.due_date) AS oldest_due,sum(i.balance) AS outstanding FROM service_accounts s JOIN subscribers u ON u.id=s.subscriber_id JOIN invoice_balances i ON i.service_id=s.id WHERE s.status='ACTIVE' AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT') AND CURRENT_DATE-i.due_date>=COALESCE((SELECT (value->>'suspensionDays')::int FROM application_settings WHERE key='service_policy'),60)+COALESCE((SELECT (value->>'graceDays')::int FROM application_settings WHERE key='service_policy'),7) GROUP BY s.id,u.name ORDER BY min(i.due_date) LIMIT 100`,
+      )
+    ).rows;
+    return seesMoney(req) ? rows : withoutMoney(rows, ["outstanding"]);
+  });
+  get("/field/overview", "service.view", async (req: any) => {
+    const [status, recon, events, queue, candidates] = await Promise.all([
+      pool.query(
+        "SELECT count(*) FILTER (WHERE status='ACTIVE') AS active,count(*) FILTER (WHERE status='SUSPENDED') AS suspended,count(*) FILTER (WHERE status='TERMINATED') AS terminated FROM service_accounts",
+      ),
+      pool.query(
+        `SELECT count(*) FILTER (WHERE completed_at IS NULL) AS pending,
+          count(*) FILTER (WHERE completed_at IS NULL AND technician_id=$1) AS mine,
+          count(*) FILTER (WHERE completed_at IS NULL AND technician_id IS NULL) AS unassigned,
+          count(*) FILTER (WHERE completed_at IS NULL AND ${overdueClear}) AS ready,
+          count(*) FILTER (WHERE completed_at>=now()-interval '7 days') AS completed_week
+        FROM reconnection_records r`,
+        [req.actor.id],
+      ),
+      pool.query(
+        "SELECT e.id,e.kind,e.reason,e.created_at,s.account_no,u.name AS subscriber,x.name AS actor FROM service_events e JOIN service_accounts s ON s.id=e.service_id JOIN subscribers u ON u.id=s.subscriber_id LEFT JOIN users x ON x.id=e.actor_id ORDER BY e.created_at DESC,e.id DESC LIMIT 8",
+      ),
+      pool.query(
+        `SELECT f.*,f.id AS service_id,r.id,r.requested_at,r.technician_id,t.name AS technician,${overdueClear} AS ready FROM reconnection_records r JOIN (${fieldService}) f ON f.id=r.service_id LEFT JOIN users t ON t.id=r.technician_id WHERE r.completed_at IS NULL AND (r.technician_id IS NULL OR r.technician_id=$1) ORDER BY r.requested_at LIMIT 8`,
+        [req.actor.id],
+      ),
+      pool.query(
+        `SELECT count(DISTINCT s.id) AS candidates FROM service_accounts s JOIN invoice_balances i ON i.service_id=s.id WHERE s.status='ACTIVE' AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT') AND CURRENT_DATE-i.due_date>=COALESCE((SELECT (value->>'suspensionDays')::int FROM application_settings WHERE key='service_policy'),60)+COALESCE((SELECT (value->>'graceDays')::int FROM application_settings WHERE key='service_policy'),7)`,
+      ),
+    ]);
+    return {
+      ...status.rows[0],
+      reconnections: recon.rows[0],
+      candidates: Number(candidates.rows[0].candidates),
+      events: events.rows,
+      queue: queue.rows,
+    };
+  });
+  get("/field/services", "service.view", async (req: any) => {
+    const q = z
+      .object({
+        search: z.string().trim().max(100).default(""),
+        status: z.enum(["", "ACTIVE", "SUSPENDED", "TERMINATED"]).default(""),
+        page: z.coerce.number().int().positive().default(1),
+      })
+      .parse(req.query);
+    return (
+      await pool.query(
+        `SELECT f.*,(SELECT e.kind||' · '||to_char(e.created_at AT TIME ZONE 'Asia/Manila','YYYY-MM-DD') FROM service_events e WHERE e.service_id=f.id ORDER BY e.created_at DESC LIMIT 1) AS last_event
+        FROM (${fieldService}) f
+        WHERE ($1='' OR concat_ws(' ',f.account_no,f.subscriber,f.address,f.area,f.plan) ILIKE '%' || $1 || '%') AND ($2='' OR f.status=$2)
+        ORDER BY f.subscriber,f.account_no LIMIT 50 OFFSET $3`,
+        [q.search, q.status, (q.page - 1) * 50],
+      )
+    ).rows;
+  });
+  get("/field/suspensions", "service.view", async () => {
+    const policy = `COALESCE((SELECT (value->>'suspensionDays')::int FROM application_settings WHERE key='service_policy'),60)+COALESCE((SELECT (value->>'graceDays')::int FROM application_settings WHERE key='service_policy'),7)`;
+    const [candidates, suspended] = await Promise.all([
+      pool.query(
+        `SELECT f.*,min(i.due_date) AS oldest_due,CURRENT_DATE-min(i.due_date) AS days_overdue FROM (${fieldService}) f JOIN invoice_balances i ON i.service_id=f.id WHERE f.status='ACTIVE' AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT') AND CURRENT_DATE-i.due_date>=${policy} GROUP BY f.id,f.account_no,f.status,f.address,f.activation_date,f.plan,f.plan_type,f.subscriber_id,f.subscriber,f.contact,f.area ORDER BY min(i.due_date) LIMIT 100`,
+      ),
+      pool.query(
+        `SELECT f.*,x.effective_date,x.reason,x.approver,CURRENT_DATE-x.effective_date AS days_suspended,
+          EXISTS(SELECT 1 FROM reconnection_records r WHERE r.service_id=f.id AND r.completed_at IS NULL) AS reconnection_requested
+        FROM (${fieldService}) f
+        LEFT JOIN LATERAL (SELECT sr.effective_date,sr.reason,u.name AS approver FROM suspension_records sr LEFT JOIN users u ON u.id=sr.approved_by WHERE sr.service_id=f.id ORDER BY sr.id DESC LIMIT 1) x ON true
+        WHERE f.status='SUSPENDED' ORDER BY x.effective_date NULLS LAST,f.subscriber LIMIT 100`,
+      ),
+    ]);
+    return { candidates: candidates.rows, suspended: suspended.rows };
+  });
+  get("/field/reconnections", "service.view", async (req: any) => {
+    const q = z
+      .object({ view: z.enum(["pending", "completed"]).default("pending") })
+      .parse(req.query);
+    return (
+      await pool.query(
+        `SELECT f.*,f.id AS service_id,r.id,r.requested_at,r.completed_at,r.technician_id,t.name AS technician,${overdueClear} AS ready
+        FROM reconnection_records r JOIN (${fieldService}) f ON f.id=r.service_id LEFT JOIN users t ON t.id=r.technician_id
+        WHERE ${q.view === "pending" ? "r.completed_at IS NULL" : "r.completed_at IS NOT NULL"}
+        ORDER BY ${q.view === "pending" ? "(r.technician_id=$1) DESC NULLS LAST,r.requested_at" : "r.completed_at DESC"} LIMIT 100`,
+        q.view === "pending" ? [req.actor.id] : [],
+      )
+    ).rows;
+  });
   get(
     "/reconnections",
     "service.view",
@@ -1048,11 +1161,7 @@ export async function buildApp() {
     "/batches",
     "collection.view",
     async () =>
-      (
-        await pool.query(
-          `SELECT b.*,c.name AS collector,a.name AS area,r.remitted_cash,r.difference,COALESCE((SELECT sum(amount) FROM payments p WHERE p.batch_id=b.id AND method='Cash' AND NOT reversed),0) AS cash,COALESCE((SELECT sum(amount) FROM payments p WHERE p.batch_id=b.id AND method<>'Cash' AND NOT reversed),0) AS noncash FROM collection_batches b JOIN collectors c ON c.id=b.collector_id LEFT JOIN collection_areas a ON a.id=b.area_id LEFT JOIN collector_remittances r ON r.batch_id=b.id ORDER BY b.id DESC LIMIT 100`,
-        )
-      ).rows,
+      (await pool.query(`${batchSelect} ORDER BY b.id DESC LIMIT 100`)).rows,
   );
   post("/areas", "collection.manage", async (req: any) => {
     const b = z.object({ name: text }).parse(req.body);
@@ -1197,6 +1306,140 @@ export async function buildApp() {
       return { cash, remitted: b.amount, difference: b.amount - cash };
     });
   });
+  get("/ledger/subscribers", "ledger.view", async (req: any) => {
+    const q = z
+      .object({
+        search: z.string().trim().max(100).default(""),
+        page: z.coerce.number().int().positive().default(1),
+      })
+      .parse(req.query);
+    return (
+      await pool.query(
+        `SELECT s.id,s.account_no,s.name,s.status,a.name AS area,c.name AS collector,
+          COALESCE((SELECT sum(i.balance) FROM invoice_balances i WHERE i.subscriber_id=s.id AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT')),0) AS outstanding
+        FROM subscribers s LEFT JOIN collection_areas a ON a.id=s.area_id LEFT JOIN collectors c ON c.id=s.collector_id
+        WHERE $1='' OR s.name ILIKE '%' || $1 || '%' OR s.account_no ILIKE '%' || $1 || '%'
+        ORDER BY s.name,s.id LIMIT 25 OFFSET $2`,
+        [q.search, (q.page - 1) * 25],
+      )
+    ).rows;
+  });
+  get("/ledger/:id", "ledger.view", async (req: any) =>
+    transaction(async (db) => {
+      const n = id.parse(req.params.id);
+      const subscriber = (
+        await db.query(
+          "SELECT s.id,s.account_no,s.name,s.address,s.contact,s.status,a.name AS area,c.name AS collector FROM subscribers s LEFT JOIN collection_areas a ON a.id=s.area_id LEFT JOIN collectors c ON c.id=s.collector_id WHERE s.id=$1",
+          [n],
+        )
+      ).rows[0];
+      if (!subscriber) throw new Error("Subscriber not found");
+      const rows = await ledger(db, n);
+      return {
+        subscriber,
+        rows,
+        debits: rows.reduce((a, r) => a + Number(r.debit), 0),
+        credits: rows.reduce((a, r) => a + Number(r.credit), 0),
+        balance: rows.at(-1)?.balance ?? 0,
+      };
+    }),
+  );
+  get("/collections/overview", "collection.view", async () => {
+    const today = manilaDate(new Date());
+    const dayStart = new Date(manilaDateWindow(today, today).start);
+    const monthStart = new Date(
+      manilaDateWindow(today.slice(0, 8) + "01", today).start,
+    );
+    const tomorrow = new Date(manilaDateWindow(today, today).end);
+    const [batches, collected, variance, counts, attention, collectors] =
+      await Promise.all([
+        pool.query(
+          `SELECT count(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS')) AS open_batches,
+            count(*) FILTER (WHERE status='SUBMITTED') AS awaiting_remittance,
+            count(*) FILTER (WHERE status='REMITTED') AS awaiting_reconciliation,
+            count(*) FILTER (WHERE status='RECONCILED') AS awaiting_close,
+            COALESCE(sum(expected) FILTER (WHERE status IN ('OPEN','IN_PROGRESS')),0) AS open_expected
+          FROM collection_batches`,
+        ),
+        pool.query(
+          "SELECT COALESCE(sum(amount) FILTER (WHERE paid_at>=$1),0) AS today,COALESCE(sum(amount),0) AS month FROM payments WHERE batch_id IS NOT NULL AND NOT reversed AND paid_at>=$2",
+          [dayStart, monthStart],
+        ),
+        pool.query(
+          "SELECT COALESCE(sum(difference),0) AS net,count(*) FILTER (WHERE difference<0) AS shortages,COALESCE(sum(difference) FILTER (WHERE difference<0),0) AS shortage_total FROM collector_remittances WHERE created_at>=$1",
+          [monthStart],
+        ),
+        pool.query(
+          "SELECT (SELECT count(*) FROM collection_areas) AS areas,(SELECT count(*) FROM collectors WHERE active) AS collectors",
+        ),
+        pool.query(
+          `${batchSelect} WHERE b.status IN ('SUBMITTED','REMITTED','RECONCILED') ORDER BY b.created_at LIMIT 8`,
+        ),
+        pool.query(collectorPerformance, [monthStart, tomorrow]),
+      ]);
+    return {
+      ...batches.rows[0],
+      collected: collected.rows[0],
+      variance: variance.rows[0],
+      ...counts.rows[0],
+      attention: attention.rows,
+      topCollectors: collectors.rows.slice(0, 5),
+      month: today.slice(0, 7),
+    };
+  });
+  get("/collections/areas", "collection.view", async () => ({
+    areas: (
+      await pool.query(
+        `SELECT a.id,a.name,
+          (SELECT count(*) FROM subscribers s WHERE s.area_id=a.id AND s.status='ACTIVE') AS active_subscribers,
+          (SELECT string_agg(DISTINCT c.name,', ') FROM subscribers s JOIN collectors c ON c.id=s.collector_id WHERE s.area_id=a.id) AS collectors,
+          (SELECT COALESCE(sum(i.balance),0) FROM invoice_balances i JOIN subscribers s ON s.id=i.subscriber_id WHERE s.area_id=a.id AND i.balance>0 AND i.status NOT IN ('VOID','DRAFT')) AS outstanding,
+          (SELECT count(*) FROM collection_batches b WHERE b.area_id=a.id AND b.status<>'CLOSED') AS active_batches,
+          (SELECT max(b.created_at) FROM collection_batches b WHERE b.area_id=a.id) AS last_batch
+        FROM collection_areas a ORDER BY a.name`,
+      )
+    ).rows,
+    collectors: (
+      await pool.query(
+        `SELECT c.id,c.name,c.active,
+          (SELECT count(*) FROM subscribers s WHERE s.collector_id=c.id AND s.status='ACTIVE') AS assigned,
+          (SELECT string_agg(DISTINCT a.name,', ') FROM subscribers s JOIN collection_areas a ON a.id=s.area_id WHERE s.collector_id=c.id) AS areas
+        FROM collectors c ORDER BY c.name`,
+      )
+    ).rows,
+  }));
+  get("/collections/remittances", "collection.view", async () => ({
+    queue: (
+      await pool.query(
+        `${batchSelect} WHERE b.status IN ('OPEN','IN_PROGRESS','SUBMITTED','REMITTED','RECONCILED') ORDER BY CASE b.status WHEN 'SUBMITTED' THEN 0 WHEN 'REMITTED' THEN 1 WHEN 'RECONCILED' THEN 2 ELSE 3 END,b.created_at`,
+      )
+    ).rows,
+    history: (
+      await pool.query(
+        "SELECT r.id,r.batch_id,r.expected_cash,r.remitted_cash,r.difference,r.notes,r.created_at,b.status,c.name AS collector,a.name AS area,u.name AS actor FROM collector_remittances r JOIN collection_batches b ON b.id=r.batch_id JOIN collectors c ON c.id=b.collector_id LEFT JOIN collection_areas a ON a.id=b.area_id LEFT JOIN users u ON u.id=r.actor_id ORDER BY r.created_at DESC LIMIT 100",
+      )
+    ).rows,
+  }));
+  get("/collections/performance", "collection.view", async (req: any) => {
+    const today = manilaDate(new Date());
+    const q = z
+      .object({
+        from: z.iso.date().default(today.slice(0, 8) + "01"),
+        to: z.iso.date().default(today),
+      })
+      .parse(req.query);
+    if (q.from > q.to) throw new Error("Start date must not be after end date");
+    const window = manilaDateWindow(q.from, q.to);
+    return {
+      ...q,
+      rows: (
+        await pool.query(collectorPerformance, [
+          new Date(window.start),
+          new Date(window.end),
+        ])
+      ).rows,
+    };
+  });
   get("/receivables", "report.view", async (req: any) => {
     const q = z
       .object({
@@ -1257,7 +1500,26 @@ export async function buildApp() {
       ).rows,
     };
   });
-  get("/reports/:type", "report.export", async (req: any, reply: any) => {
+  get("/reports/:type", "", async (req: any, reply: any) => {
+    const has = (p: string) =>
+      req.actor.permissions.includes("*") || req.actor.permissions.includes(p);
+    if (
+      !has("report.export") &&
+      !(
+        ["collections", "collectors"].includes(req.params.type) &&
+        has("collection.view")
+      ) &&
+      !(req.params.type === "soa" && has("ledger.view"))
+    ) {
+      await securityEvent(req, "auth.access_denied", "DENIED", req.actor.id, {
+        permission: "report.export",
+        method: req.method,
+        path: req.routeOptions.url,
+      });
+      return reply
+        .code(403)
+        .send({ error: "Your role does not permit this action." });
+    }
     const q = z
       .object({
         format: z.enum(["pdf", "xlsx"]),
@@ -1374,11 +1636,7 @@ export async function buildApp() {
   });
 
   get("/system/settings", "system.settings", async () => {
-    const settings = (
-      await pool.query(
-        "SELECT value FROM application_settings WHERE key='system'",
-      )
-    ).rows[0]?.value ?? { displayName: "BCIS", supportContact: "" };
+    const settings = await systemProfile();
     const updated =
       (
         await pool.query(
@@ -1396,9 +1654,14 @@ export async function buildApp() {
           .string()
           .regex(/^#[0-9a-fA-F]{6}$/)
           .optional(),
+        businessName: profileFields.businessName.optional(),
+        address: profileFields.address.optional(),
+        contactNumber: profileFields.contactNumber.optional(),
+        email: profileFields.email.optional(),
+        tin: profileFields.tin.optional(),
       })
       .parse(req.body);
-    return transaction(async (db) => {
+    await transaction(async (db) => {
       await db.query(
         "INSERT INTO application_settings(key,value) VALUES('system',$1) ON CONFLICT(key) DO UPDATE SET value=application_settings.value || excluded.value",
         [JSON.stringify(b)],
@@ -1411,8 +1674,120 @@ export async function buildApp() {
         "system",
         b,
       );
-      return b;
     });
+    return systemProfile();
+  });
+  post("/system/logo", "system.settings", async (req: any) => {
+    const b = z
+      .object({ image: z.string().max(500000).nullable() })
+      .parse(req.body);
+    if (b.image !== null) imageBytes(b.image);
+    const version = b.image === null ? null : logoVersion(b.image);
+    await transaction(async (db) => {
+      if (b.image === null)
+        await db.query(
+          "DELETE FROM application_settings WHERE key='system_logo'",
+        );
+      else
+        await db.query(
+          "INSERT INTO application_settings(key,value) VALUES('system_logo',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          [JSON.stringify({ image: b.image, version })],
+        );
+      await audit(
+        db,
+        req.actor.id,
+        "system.logo.update",
+        "application_settings",
+        "system_logo",
+        { hasLogo: b.image !== null, version },
+      );
+    });
+    return { logo: b.image, logoVersion: version };
+  });
+  get("/audit/overview", "audit.view", async () => {
+    const today = manilaDate(new Date());
+    const monthStart = new Date(
+      manilaDateWindow(today.slice(0, 8) + "01", today).start,
+    );
+    const [summary, recent, actors, receivables, events] = await Promise.all([
+      pool.query(
+        `SELECT count(*) FILTER (WHERE kind='REVERSAL') AS reversals,COALESCE(sum(amount) FILTER (WHERE kind='REVERSAL'),0) AS reversed_amount,
+          count(*) FILTER (WHERE kind='ADJUSTMENT') AS adjustments,COALESCE(sum(amount) FILTER (WHERE kind='ADJUSTMENT' AND amount<0),0) AS credits,COALESCE(sum(amount) FILTER (WHERE kind='ADJUSTMENT' AND amount>0),0) AS debits,
+          count(*) FILTER (WHERE kind='VOID') AS voids,COALESCE(sum(amount) FILTER (WHERE kind='VOID'),0) AS voided_amount
+        FROM (${corrections}) x WHERE created_at>=$1`,
+        [monthStart],
+      ),
+      pool.query(`${corrections} ORDER BY created_at DESC,id DESC LIMIT 8`),
+      pool.query(
+        `SELECT COALESCE(actor,'Unknown user') AS actor,count(*) AS corrections FROM (${corrections}) x WHERE created_at>=$1 GROUP BY actor ORDER BY count(*) DESC LIMIT 6`,
+        [monthStart],
+      ),
+      pool.query(
+        `SELECT COALESCE(sum(balance),0) AS total,count(DISTINCT subscriber_id) AS accounts,
+          COALESCE(sum(balance) FILTER (WHERE due_date>=CURRENT_DATE),0) AS current,
+          COALESCE(sum(balance) FILTER (WHERE CURRENT_DATE-due_date BETWEEN 1 AND 30),0) AS d30,
+          COALESCE(sum(balance) FILTER (WHERE CURRENT_DATE-due_date BETWEEN 31 AND 60),0) AS d60,
+          COALESCE(sum(balance) FILTER (WHERE CURRENT_DATE-due_date BETWEEN 61 AND 90),0) AS d90,
+          COALESCE(sum(balance) FILTER (WHERE CURRENT_DATE-due_date>90),0) AS over90
+        FROM invoice_balances WHERE balance>0 AND status NOT IN ('VOID','DRAFT')`,
+      ),
+      pool.query(
+        "SELECT count(*) AS events,count(*) FILTER (WHERE action IN ('payment.reverse','invoice.adjust','invoice.void')) AS corrections FROM audit_logs WHERE created_at>now()-interval '7 days'",
+      ),
+    ]);
+    return {
+      month: today.slice(0, 7),
+      summary: summary.rows[0],
+      recent: recent.rows,
+      actors: actors.rows,
+      receivables: receivables.rows[0],
+      events: events.rows[0],
+    };
+  });
+  get("/corrections", "audit.view", async (req: any) => {
+    const today = manilaDate(new Date());
+    const q = z
+      .object({
+        kind: z.enum(["", "REVERSAL", "ADJUSTMENT", "VOID"]).default(""),
+        search: z.string().trim().max(100).default(""),
+        from: z.iso.date().default(today.slice(0, 8) + "01"),
+        to: z.iso.date().default(today),
+        page: z.coerce.number().int().positive().default(1),
+      })
+      .parse(req.query);
+    if (q.from > q.to) throw new Error("Start date must not be after end date");
+    const window = manilaDateWindow(q.from, q.to);
+    const params = [new Date(window.start), new Date(window.end)];
+    const [rows, summary] = await Promise.all([
+      pool.query(
+        `${corrections} WHERE created_at>=$1 AND created_at<$2 AND ($3='' OR kind=$3)
+          AND ($4='' OR concat_ws(' ',reference,subscriber,account_no,reason,actor) ILIKE '%' || $4 || '%')
+          ORDER BY created_at DESC,id DESC LIMIT 50 OFFSET $5`,
+        [...params, q.kind, q.search, (q.page - 1) * 50],
+      ),
+      pool.query(
+        `SELECT kind,count(*) AS count,COALESCE(sum(amount),0) AS amount FROM (${corrections}) x WHERE created_at>=$1 AND created_at<$2 GROUP BY kind`,
+        params,
+      ),
+    ]);
+    return { ...q, rows: rows.rows, summary: summary.rows };
+  });
+  get("/corrections/lookup", "payment.reverse", async (req: any) => {
+    const q = z
+      .object({ search: z.string().trim().min(2).max(100) })
+      .parse(req.query);
+    const like = `%${q.search}%`;
+    const [payments, invoices] = await Promise.all([
+      pool.query(
+        "SELECT p.id,p.receipt_no,p.amount,p.method,p.paid_at,p.reversed,s.name,s.account_no FROM payments p JOIN subscribers s ON s.id=p.subscriber_id WHERE p.receipt_no ILIKE $1 OR s.name ILIKE $1 OR s.account_no ILIKE $1 ORDER BY p.paid_at DESC,p.id DESC LIMIT 10",
+        [like],
+      ),
+      pool.query(
+        "SELECT b.id,b.number,b.period,b.due_date,b.status,b.total,b.adjusted,b.balance,s.name,s.account_no FROM invoice_balances b JOIN subscribers s ON s.id=b.subscriber_id WHERE b.number ILIKE $1 OR s.name ILIKE $1 OR s.account_no ILIKE $1 ORDER BY b.period DESC,b.id DESC LIMIT 10",
+        [like],
+      ),
+    ]);
+    return { payments: payments.rows, invoices: invoices.rows };
   });
   get("/audit", "audit.view", async (req: any) => {
     const q = z
@@ -1510,7 +1885,12 @@ export async function buildApp() {
   get(
     "/settings",
     "billing.settings",
-    async () => (await pool.query("SELECT * FROM application_settings")).rows,
+    async () =>
+      (
+        await pool.query(
+          "SELECT * FROM application_settings WHERE key<>'system_logo'",
+        )
+      ).rows,
   );
   post("/settings", "billing.settings", async (req: any) => {
     const b = z
