@@ -1,3 +1,4 @@
+import { securityEvent } from "./security-audit.js";
 import { reserveIdentifier, consumeIdentifier } from "./identifiers.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
@@ -124,10 +125,16 @@ export async function buildApp() {
         permission &&
         !permissions.includes("*") &&
         !permissions.includes(permission)
-      )
+      ) {
+        await securityEvent(req, "auth.access_denied", "DENIED", user.id, {
+          permission,
+          method: req.method,
+          path: req.routeOptions.url,
+        });
         return reply
           .code(403)
           .send({ error: "Your role does not permit this action." });
+      }
     };
   const get = (url: string, permission: string, handler: any) =>
     app.get(
@@ -157,21 +164,27 @@ export async function buildApp() {
           b.username,
         ])
       ).rows[0];
-      if (!u || !verifyPassword(b.password, u.password_hash))
+      if (!u || !verifyPassword(b.password, u.password_hash)) {
+        await securityEvent(req, "auth.login_failed", "FAILURE", null, {
+          username: b.username,
+          reason: "Invalid credentials",
+        });
         return reply.code(401).send({ error: "Invalid username or password." });
+      }
       const token = randomBytes(32).toString("hex");
       await pool.query(
         "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '8 hours')",
         [tokenHash(token), u.id],
       );
-      await transaction((db) =>
-        audit(db, u.id, "auth.login", "users", u.id, { username: u.username }),
-      );
+      await securityEvent(req, "auth.login", "SUCCESS", u.id, {
+        username: u.username,
+      });
       return { token };
     },
   );
   get("/me", "", async (req: any) => req.actor);
   post("/logout", "", async (req: any) => {
+    await securityEvent(req, "auth.logout", "SUCCESS", req.actor.id);
     await pool.query("DELETE FROM sessions WHERE token_hash=$1", [
       tokenHash(req.headers.authorization.replace(/^Bearer /, "")),
     ]);
@@ -1237,19 +1250,51 @@ export async function buildApp() {
     };
   });
   get("/security-audit", "security.view", async (req: any) => {
-    const page = z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(1)
-      .parse(req.query.page);
-    return (
-      await pool.query(
-        "SELECT a.id,a.created_at,a.action,a.entity,a.entity_id,a.reason,u.name AS actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id WHERE a.action LIKE 'auth.%' OR a.action LIKE 'user.%' OR a.action LIKE 'backup.%' OR a.action LIKE 'system.%' ORDER BY a.id DESC LIMIT 50 OFFSET $1",
-        [(page - 1) * 50],
-      )
-    ).rows;
+    const q = z
+      .object({
+        page: z.coerce.number().int().positive().default(1),
+        search: z.string().trim().max(100).default(""),
+        category: z.enum(["", "auth", "user", "backup", "system"]).default(""),
+        outcome: z.enum(["", "SUCCESS", "FAILURE", "DENIED"]).default(""),
+        from: z.iso.date().optional(),
+        to: z.iso.date().optional(),
+      })
+      .refine((q) => !q.from || !q.to || q.from <= q.to, {
+        message: "Start date must be on or before end date",
+      })
+      .parse(req.query);
+    const where = `WHERE (a.action LIKE 'auth.%' OR a.action LIKE 'user.%' OR a.action LIKE 'backup.%' OR a.action LIKE 'system.%')
+      AND ($1='' OR concat_ws(' ',a.id::text,u.name,u.username,a.action,a.entity_id,a.source_ip,a.new_value->>'username') ILIKE '%' || $1 || '%')
+      AND ($2='' OR split_part(a.action,'.',1)=$2) AND ($3='' OR a.outcome=$3)
+      AND ($4::date IS NULL OR a.created_at >= ($4::date::timestamp AT TIME ZONE 'Asia/Manila'))
+      AND ($5::date IS NULL OR a.created_at < (($5::date+1)::timestamp AT TIME ZONE 'Asia/Manila'))`;
+    const values = [
+      q.search,
+      q.category,
+      q.outcome,
+      q.from ?? null,
+      q.to ?? null,
+    ];
+    return transaction(async (db) => {
+      await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      const summary = (
+        await db.query(
+          `SELECT count(*)::int AS total, count(*) FILTER(WHERE a.outcome='SUCCESS')::int AS success, count(*) FILTER(WHERE a.outcome='FAILURE')::int AS failure, count(*) FILTER(WHERE a.outcome='DENIED')::int AS denied FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where}`,
+          values,
+        )
+      ).rows[0];
+      const rows = (
+        await db.query(
+          `SELECT a.id,a.created_at,a.action,a.entity,a.entity_id,a.reason,a.outcome,a.source_ip,a.request_id,u.name AS actor,u.username,
+        jsonb_strip_nulls(jsonb_build_object('username',a.new_value->>'username','role',a.new_value->>'role','active',a.new_value->'active','displayName',a.new_value->>'displayName','supportContact',a.new_value->>'supportContact','permission',a.new_value->>'permission','method',a.new_value->>'method','path',a.new_value->>'path','sha256',a.new_value->>'sha256')) AS details
+        FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT 25 OFFSET $6`,
+          [...values, (q.page - 1) * 25],
+        )
+      ).rows;
+      return { rows, summary, page: q.page, pageSize: 25 };
+    });
   });
+
   get(
     "/system/settings",
     "system.settings",

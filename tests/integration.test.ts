@@ -242,10 +242,63 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
         headers: h,
       })
     ).json();
-    expect(events.some((e: any) => e.action === "auth.login")).toBe(true);
+    expect(events.rows.some((e: any) => e.action === "auth.login")).toBe(true);
     expect(
-      events.every((e: any) => /^(auth|user|backup|system)\./.test(e.action)),
+      events.rows.every((e: any) =>
+        /^(auth|user|backup|system)\./.test(e.action),
+      ),
     ).toBe(true);
+  });
+  it("security audit filters failures, hides secrets and validates dates", async () => {
+    const username = "audit-" + randomUUID();
+    await app.inject({
+      method: "POST",
+      url: "/api/login",
+      payload: { username, password: "Never-log-this-password" },
+    });
+    const h = { authorization: `Bearer ${adminToken}` };
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/security-audit?search=${username}&category=auth&outcome=FAILURE`,
+      headers: h,
+    });
+    expect(response.statusCode).toBe(200);
+    const result = response.json();
+    expect(result.summary.total).toBe(1);
+    expect(result.summary.failure).toBe(1);
+    expect(result.rows[0].action).toBe("auth.login_failed");
+    expect(result.rows[0].source_ip).toBeTruthy();
+    expect(result.rows[0].request_id).toBeTruthy();
+    expect(response.body).not.toContain("Never-log-this-password");
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/security-audit?from=2026-10-10&to=2026-10-01",
+          headers: h,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/security-audit?outcome=DENIED",
+          headers: h,
+        })
+      )
+        .json()
+        .rows.every((r: any) => r.outcome === "DENIED"),
+    ).toBe(true);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/security-audit",
+          headers: { authorization: `Bearer ${cashToken}` },
+        })
+      ).statusCode,
+    ).toBe(403);
   });
   it("AT-01 exact payment creates receipt and balanced ledger", async () => {
     const sub = await fixture();

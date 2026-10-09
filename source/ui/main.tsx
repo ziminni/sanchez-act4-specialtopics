@@ -1,3 +1,4 @@
+import { SecurityAudit } from "./SecurityAudit";
 import React, { useState, useEffect, useCallback, useId } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -703,32 +704,7 @@ function App() {
                   </section>
                 </>
               )}
-              {page === "Security Audit" && (
-                <section className="panel">
-                  <Table
-                    rows={rows}
-                    columns={[
-                      ["created_at", "Time", (r) => date(r.created_at)],
-                      ["actor", "User"],
-                      ["action", "Action"],
-                      ["entity", "Record type"],
-                      ["entity_id", "Record ID"],
-                    ]}
-                  />
-                  <button
-                    disabled={pageNo === 1}
-                    onClick={() => setPageNo(pageNo - 1)}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    disabled={rows.length < 50}
-                    onClick={() => setPageNo(pageNo + 1)}
-                  >
-                    Next
-                  </button>
-                </section>
-              )}
+              {page === "Security Audit" && <SecurityAudit request={api} />}
               {page === "Backup Restore" && (
                 <section className="panel report-card">
                   <h2>Backup and recovery</h2>
