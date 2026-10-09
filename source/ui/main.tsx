@@ -220,6 +220,7 @@ function App() {
     [search, setSearch] = useState(""),
     [pageNo, setPageNo] = useState(1),
     [modal, setModal] = useState(""),
+    [suggestedAccountNo, setSuggestedAccountNo] = useState(""),
     [profile, setProfile] = useState<Row | null>(null),
     [tab, setTab] = useState("Overview"),
     [selected, setSelected] = useState<Row | null>(null),
@@ -564,7 +565,17 @@ function App() {
               {page === "Subscribers" && can("subscriber.edit") && (
                 <button
                   className="primary"
-                  onClick={() => setModal("subscriber")}
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      const suggestion = await api(
+                        "/subscribers/account-number",
+                        {},
+                      );
+                      setSuggestedAccountNo(suggestion.account_no);
+                      setModal("subscriber");
+                    })
+                  }
                 >
                   <Plus size={17} /> New subscriber
                 </button>
@@ -1793,24 +1804,23 @@ function App() {
                 }
               >
                 <div className="form-grid">
-                  <Field
-                    label={
-                      modal === "subscriber-edit"
-                        ? "Account number *"
-                        : "Account number"
-                    }
-                  >
+                  <Field label="Account number *">
                     <input
                       name="accountNo"
-                      required={modal === "subscriber-edit"}
-                      disabled={modal !== "subscriber-edit"}
-                      placeholder="Automatically assigned when saved"
+                      required
+                      maxLength={200}
                       defaultValue={
                         modal === "subscriber-edit"
                           ? profile?.subscriber.account_no
-                          : ""
+                          : suggestedAccountNo
                       }
                     />
+                    {modal === "subscriber" && (
+                      <small>
+                        A number is generated for you. You can change it before
+                        saving.
+                      </small>
+                    )}
                   </Field>
                   <Field label="Full name *">
                     <input

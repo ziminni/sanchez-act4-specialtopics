@@ -211,9 +211,15 @@ export async function buildApp() {
       ),
     };
   });
+  post("/subscribers/account-number", "subscriber.edit", async () => {
+    return (
+      await pool.query("SELECT next_subscriber_account_no() AS account_no")
+    ).rows[0];
+  });
   post("/subscribers", "subscriber.edit", async (req: any) => {
     const b = z
       .object({
+        accountNo: text.optional(),
         name: text,
         contact: z.string().max(50),
         address: text,
@@ -227,7 +233,7 @@ export async function buildApp() {
     return transaction(async (db) => {
       const r = (
         await db.query(
-          "INSERT INTO subscribers(name,contact,address,area_id,collector_id,billing_day,due_day,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+          "INSERT INTO subscribers(account_no,name,contact,address,area_id,collector_id,billing_day,due_day,notes) VALUES(COALESCE($9,next_subscriber_account_no()),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
           [
             b.name,
             b.contact,
@@ -237,6 +243,7 @@ export async function buildApp() {
             b.billingDay,
             b.dueDay,
             b.notes,
+            b.accountNo ?? null,
           ],
         )
       ).rows[0];

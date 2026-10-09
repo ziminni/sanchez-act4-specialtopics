@@ -415,7 +415,7 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       (await balance(sub)).find((i) => i.period === "2027-01-01").total,
     ).toBe("149900");
   });
-  it("automatically numbers concurrent subscriber registrations and ignores client numbering", async () => {
+  it("automatically numbers concurrent subscriber registrations and accepts edited suggestions", async () => {
     const area = (
       await pool.query(
         "INSERT INTO collection_areas(name) VALUES($1) RETURNING id",
@@ -435,7 +435,6 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       collectorId: collector,
       billingDay: 1,
       dueDay: 15,
-      accountNo: "CLIENT-MUST-NOT-CHOOSE",
     };
     const responses = await Promise.all(
       Array.from({ length: 3 }, () =>
@@ -461,6 +460,36 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       ).toBe(record.account_no);
     }
     expect(new Set(responses.map((r) => r.json().account_no)).size).toBe(3);
+    const suggestions = await Promise.all(
+      Array.from({ length: 2 }, () =>
+        app.inject({
+          method: "POST",
+          url: "/api/subscribers/account-number",
+          headers: headers(),
+          payload: {},
+        }),
+      ),
+    );
+    expect(suggestions.every((r) => r.statusCode === 200)).toBe(true);
+    expect(suggestions[0].json().account_no).not.toBe(
+      suggestions[1].json().account_no,
+    );
+    for (const accountNo of [
+      suggestions[0].json().account_no,
+      "CUSTOM-" + randomUUID(),
+    ]) {
+      const create = () =>
+        app.inject({
+          method: "POST",
+          url: "/api/subscribers",
+          headers: headers(),
+          payload: { ...payload, accountNo },
+        });
+      const saved = await create();
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().account_no).toBe(accountNo);
+      expect((await create()).statusCode).toBe(409);
+    }
   });
   it("generated numbers skip existing seeded accounts and do not truncate long numbers", async () => {
     const current = BigInt(

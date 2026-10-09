@@ -52,3 +52,7 @@ The registration API now generates subscriber numbers using a PostgreSQL sequenc
 ## Payment subscriber autocomplete update
 
 The payment subscriber field now presents a dropdown of partial-name/account matches with address and outstanding balance. Browser verification passed for mouse and keyboard selection, account search, no-match feedback, dismissal, and out-of-order search/profile responses. Editing the chosen subscriber disables payment posting until the newly selected account loads. No payments were posted during these checks. Evidence: payment-search-evidence.json and screenshots/payment-subscriber-dropdown.png.
+
+### Editable generated subscriber account number
+
+New subscriber now requests a sequence-generated suggestion before opening the form. The visible account number is editable and the server saves the submitted value. Duplicate numbers remain rejected by the database unique constraint. Cancelled forms may leave gaps in the sequence. TypeScript validation and all 20 database integration tests passed, including concurrent generation, saving suggested/custom numbers and duplicate rejection. A Chrome check confirmed the generated value is visible and editable.
