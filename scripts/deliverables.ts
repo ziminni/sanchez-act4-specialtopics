@@ -55,36 +55,42 @@ async function document(input: string, output: string) {
   doc.end();
   await done;
 }
-await document(
-  "docs/technical-documentation.md",
-  "docs/technical-documentation.pdf",
-);
-await document("docs/user-manual.md", "docs/user-manual.pdf");
-await document(
-  "tests/acceptance-status.md",
-  "tests/acceptance-test-report.pdf",
-);
-for (const type of [
-  "collections",
-  "aging",
-  "collectors",
-  "revenue",
-  "subscribers",
-  "reversals",
-  "soa",
-])
-  for (const format of ["pdf", "xlsx"] as const) {
-    await writeFile(
-      `reports-samples/${type}.${format}`,
-      await exportReport(type, {
-        format,
-        from: "2026-01-01",
-        to: "2026-12-31",
-        subscriberId: 1,
-      }),
-    );
-  }
+if (process.argv.includes("--manual-only")) {
+  await document("docs/user-manual.md", "docs/user-manual.pdf");
+} else {
+  await document(
+    "docs/technical-documentation.md",
+    "docs/technical-documentation.pdf",
+  );
+  await document("docs/user-manual.md", "docs/user-manual.pdf");
+  await document(
+    "tests/acceptance-status.md",
+    "tests/acceptance-test-report.pdf",
+  );
+  for (const type of [
+    "collections",
+    "aging",
+    "collectors",
+    "revenue",
+    "subscribers",
+    "reversals",
+    "soa",
+  ])
+    for (const format of ["pdf", "xlsx"] as const) {
+      await writeFile(
+        `reports-samples/${type}.${format}`,
+        await exportReport(type, {
+          format,
+          from: "2026-01-01",
+          to: "2026-12-31",
+          subscriberId: 1,
+        }),
+      );
+    }
+}
 await pool.end();
 console.log(
-  "Created 3 documentation PDFs and 7 matching PDF/XLSX report samples.",
+  process.argv.includes("--manual-only")
+    ? "Updated user manual PDF."
+    : "Created 3 documentation PDFs and 7 matching PDF/XLSX report samples.",
 );

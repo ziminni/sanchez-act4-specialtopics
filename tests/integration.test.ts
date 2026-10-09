@@ -415,4 +415,80 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       (await balance(sub)).find((i) => i.period === "2027-01-01").total,
     ).toBe("149900");
   });
+  it("automatically numbers concurrent subscriber registrations and ignores client numbering", async () => {
+    const area = (
+      await pool.query(
+        "INSERT INTO collection_areas(name) VALUES($1) RETURNING id",
+        ["Numbering " + randomUUID()],
+      )
+    ).rows[0].id;
+    const collector = (
+      await pool.query(
+        "INSERT INTO collectors(name) VALUES('Numbering test collector') RETURNING id",
+      )
+    ).rows[0].id;
+    const payload = {
+      name: "Automatic registration test",
+      contact: "DEMO",
+      address: "Synthetic address",
+      areaId: area,
+      collectorId: collector,
+      billingDay: 1,
+      dueDay: 15,
+      accountNo: "CLIENT-MUST-NOT-CHOOSE",
+    };
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        app.inject({
+          method: "POST",
+          url: "/api/subscribers",
+          headers: headers(),
+          payload,
+        }),
+      ),
+    );
+    for (const response of responses) {
+      expect(response.statusCode).toBe(200);
+      expect(response.json().account_no).toMatch(/^BCIS-\d{5,}$/);
+      const record = response.json();
+      expect(
+        (
+          await pool.query(
+            "SELECT new_value->>'account_no' AS account FROM audit_logs WHERE action='subscriber.create' AND entity_id=$1",
+            [String(record.id)],
+          )
+        ).rows[0].account,
+      ).toBe(record.account_no);
+    }
+    expect(new Set(responses.map((r) => r.json().account_no)).size).toBe(3);
+  });
+  it("generated numbers skip existing seeded accounts and do not truncate long numbers", async () => {
+    const current = BigInt(
+      (await pool.query("SELECT last_value FROM subscriber_account_number"))
+        .rows[0].last_value,
+    );
+    const reserved = current + 100000n;
+    await pool.query(
+      "SELECT setval('subscriber_account_number',$1::bigint,true)",
+      [(reserved - 1n).toString()],
+    );
+    const number = "BCIS-" + reserved.toString();
+    await pool.query(
+      "INSERT INTO subscribers(account_no,name,address) VALUES($1,'Reserved seed account','Synthetic address')",
+      [number],
+    );
+    const created = (
+      await pool.query(
+        "INSERT INTO subscribers(name,address) VALUES('Automatic after seed','Synthetic address') RETURNING account_no",
+      )
+    ).rows[0];
+    expect(created.account_no).toBe("BCIS-" + (reserved + 1n).toString());
+    expect(
+      (
+        await pool.query("SELECT name FROM subscribers WHERE account_no=$1", [
+          number,
+        ])
+      ).rows[0].name,
+    ).toBe("Reserved seed account");
+  });
 });

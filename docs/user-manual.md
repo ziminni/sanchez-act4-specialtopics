@@ -6,7 +6,7 @@ Open BCIS and enter your assigned username and password. Your role controls navi
 
 ## Register a subscriber
 
-Choose Subscribers → New subscriber. Enter a unique account number, name, address, collection area, collector, and billing/due days. Open the new subscriber row → Services → Add service. Select the plan, enter the agreed rate, dates, and installation address. Multiple service accounts may belong to the same subscriber.
+Choose Subscribers → New subscriber. Enter the name, address, collection area, collector, and billing/due days. The account number is generated automatically when saved (for example BCIS-00051) and shown in the success message. Existing account numbers remain unchanged. Open the new subscriber row → Services → Add service. Select the plan, enter the agreed rate, dates, and installation address. Multiple service accounts may belong to the same subscriber.
 
 ## Generate billing
 

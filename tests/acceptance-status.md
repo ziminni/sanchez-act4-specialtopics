@@ -44,3 +44,7 @@ Strict TypeScript check and production renderer/Electron bundle build pass. Actu
 ## Not yet established by testing
 
 No benchmark has established performance at 20,000 subscribers / 500,000 invoices / 500,000 payments / 1,000,000 ledger entries. Queries and indexes support paginated operational screens, but profile ledger and exports still need large-dataset streaming/pagination before a production-scale performance claim. No external payment provider or Facebook integration is implemented; GCash verification is manual as specified.
+
+## Subscriber account-number update
+
+The registration API now generates subscriber numbers using a PostgreSQL sequence and preserves existing accounts. The expanded PostgreSQL suite passes 20 tests, including simultaneous registration, generated-number audit evidence, reserved seed numbers and identifiers longer than five digits. The registration form was checked in the browser without creating live demo records.

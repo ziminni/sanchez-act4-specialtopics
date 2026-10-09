@@ -5,34 +5,40 @@
 
  RUN  v5.0.3 /Users/user/Desktop/Act4
 
-{"level":30,"time":1791479672478,"pid":13011,"hostname":"MacBookAir","reqId":"req-1","req":{"method":"POST","url":"/api/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672525,"pid":13011,"hostname":"MacBookAir","reqId":"req-1","res":{"statusCode":200},"responseTime":45.719334,"msg":"request completed"}
-{"level":30,"time":1791479672525,"pid":13011,"hostname":"MacBookAir","reqId":"req-2","req":{"method":"POST","url":"/api/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672564,"pid":13011,"hostname":"MacBookAir","reqId":"req-2","res":{"statusCode":200},"responseTime":38.94991700000003,"msg":"request completed"}
-{"level":30,"time":1791479672660,"pid":13011,"hostname":"MacBookAir","reqId":"req-3","req":{"method":"POST","url":"/api/payments","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":50,"time":1791479672663,"pid":13011,"hostname":"MacBookAir","reqId":"req-3","err":{"type":"Error","message":"Use the GCash verification queue to post verified payments","stack":"Error: Use the GCash verification queue to post verified payments\n    at Object.<anonymous> (/Users/user/Desktop/Act4/source/server/app.ts:792:13)\n    at preHandlerCallbackInner (/Users/user/Desktop/Act4/node_modules/fastify/lib/handle-request.js:203:24)\n    at preHandlerCallback (/Users/user/Desktop/Act4/node_modules/fastify/lib/handle-request.js:168:5)\n    at next (/Users/user/Desktop/Act4/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/user/Desktop/Act4/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)"},"msg":"Request failed"}
-{"level":30,"time":1791479672665,"pid":13011,"hostname":"MacBookAir","reqId":"req-3","res":{"statusCode":400},"responseTime":4.506208999999899,"msg":"request completed"}
-{"level":30,"time":1791479672680,"pid":13011,"hostname":"MacBookAir","reqId":"req-4","req":{"method":"POST","url":"/api/batches/7/transition","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672682,"pid":13011,"hostname":"MacBookAir","reqId":"req-4","res":{"statusCode":200},"responseTime":1.8222500000000537,"msg":"request completed"}
-{"level":30,"time":1791479672682,"pid":13011,"hostname":"MacBookAir","reqId":"req-5","req":{"method":"POST","url":"/api/batches/7/remit","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672684,"pid":13011,"hostname":"MacBookAir","reqId":"req-5","res":{"statusCode":200},"responseTime":2.1159589999999753,"msg":"request completed"}
-{"level":30,"time":1791479672689,"pid":13011,"hostname":"MacBookAir","reqId":"req-6","req":{"method":"POST","url":"/api/batches/8/transition","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672690,"pid":13011,"hostname":"MacBookAir","reqId":"req-6","res":{"statusCode":200},"responseTime":1.3439160000000356,"msg":"request completed"}
-{"level":30,"time":1791479672690,"pid":13011,"hostname":"MacBookAir","reqId":"req-7","req":{"method":"POST","url":"/api/batches/8/remit","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672692,"pid":13011,"hostname":"MacBookAir","reqId":"req-7","res":{"statusCode":200},"responseTime":1.663583000000017,"msg":"request completed"}
-{"level":30,"time":1791479672722,"pid":13011,"hostname":"MacBookAir","reqId":"req-8","req":{"method":"GET","url":"/api/users","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672723,"pid":13011,"hostname":"MacBookAir","reqId":"req-8","res":{"statusCode":403},"responseTime":0.8981249999999363,"msg":"request completed"}
-{"level":30,"time":1791479672723,"pid":13011,"hostname":"MacBookAir","reqId":"req-9","req":{"method":"GET","url":"/api/backups","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672724,"pid":13011,"hostname":"MacBookAir","reqId":"req-9","res":{"statusCode":403},"responseTime":0.5550419999999576,"msg":"request completed"}
-{"level":30,"time":1791479672774,"pid":13011,"hostname":"MacBookAir","reqId":"req-a","req":{"method":"POST","url":"/api/invoices/417/void","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672777,"pid":13011,"hostname":"MacBookAir","reqId":"req-a","res":{"statusCode":200},"responseTime":2.352583000000095,"msg":"request completed"}
-{"level":30,"time":1791479672781,"pid":13011,"hostname":"MacBookAir","reqId":"req-b","req":{"method":"POST","url":"/api/invoices/418/adjust","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":50,"time":1791479672783,"pid":13011,"hostname":"MacBookAir","reqId":"req-b","err":{"type":"Error","message":"Adjustment cannot reduce invoice below allocated payments","stack":"Error: Adjustment cannot reduce invoice below allocated payments\n    at /Users/user/Desktop/Act4/source/server/app.ts:733:15\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at transaction (/Users/user/Desktop/Act4/source/server/db.ts:15:20)"},"msg":"Request failed"}
-{"level":30,"time":1791479672783,"pid":13011,"hostname":"MacBookAir","reqId":"req-b","res":{"statusCode":400},"responseTime":2.1129580000001624,"msg":"request completed"}
-{"level":30,"time":1791479672785,"pid":13011,"hostname":"MacBookAir","reqId":"req-c","req":{"method":"POST","url":"/api/services/58/rate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
-{"level":30,"time":1791479672788,"pid":13011,"hostname":"MacBookAir","reqId":"req-c","res":{"statusCode":200},"responseTime":2.8226669999999103,"msg":"request completed"}
+{"level":30,"time":1791505596498,"pid":41763,"hostname":"MacBookAir","reqId":"req-1","req":{"method":"POST","url":"/api/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596541,"pid":41763,"hostname":"MacBookAir","reqId":"req-1","res":{"statusCode":200},"responseTime":42.489915999999994,"msg":"request completed"}
+{"level":30,"time":1791505596541,"pid":41763,"hostname":"MacBookAir","reqId":"req-2","req":{"method":"POST","url":"/api/login","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596577,"pid":41763,"hostname":"MacBookAir","reqId":"req-2","res":{"statusCode":200},"responseTime":36.06229100000007,"msg":"request completed"}
+{"level":30,"time":1791505596660,"pid":41763,"hostname":"MacBookAir","reqId":"req-3","req":{"method":"POST","url":"/api/payments","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1791505596663,"pid":41763,"hostname":"MacBookAir","reqId":"req-3","err":{"type":"Error","message":"Use the GCash verification queue to post verified payments","stack":"Error: Use the GCash verification queue to post verified payments\n    at Object.<anonymous> (/Users/user/Desktop/Act4/source/server/app.ts:790:13)\n    at preHandlerCallbackInner (/Users/user/Desktop/Act4/node_modules/fastify/lib/handle-request.js:203:24)\n    at preHandlerCallback (/Users/user/Desktop/Act4/node_modules/fastify/lib/handle-request.js:168:5)\n    at next (/Users/user/Desktop/Act4/node_modules/fastify/lib/hooks.js:236:9)\n    at handleResolve (/Users/user/Desktop/Act4/node_modules/fastify/lib/hooks.js:253:7)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)"},"msg":"Request failed"}
+{"level":30,"time":1791505596665,"pid":41763,"hostname":"MacBookAir","reqId":"req-3","res":{"statusCode":400},"responseTime":4.8350829999999405,"msg":"request completed"}
+{"level":30,"time":1791505596681,"pid":41763,"hostname":"MacBookAir","reqId":"req-4","req":{"method":"POST","url":"/api/batches/9/transition","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596683,"pid":41763,"hostname":"MacBookAir","reqId":"req-4","res":{"statusCode":200},"responseTime":1.77212499999996,"msg":"request completed"}
+{"level":30,"time":1791505596683,"pid":41763,"hostname":"MacBookAir","reqId":"req-5","req":{"method":"POST","url":"/api/batches/9/remit","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596685,"pid":41763,"hostname":"MacBookAir","reqId":"req-5","res":{"statusCode":200},"responseTime":1.9902499999998327,"msg":"request completed"}
+{"level":30,"time":1791505596689,"pid":41763,"hostname":"MacBookAir","reqId":"req-6","req":{"method":"POST","url":"/api/batches/10/transition","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596691,"pid":41763,"hostname":"MacBookAir","reqId":"req-6","res":{"statusCode":200},"responseTime":1.5173750000001291,"msg":"request completed"}
+{"level":30,"time":1791505596691,"pid":41763,"hostname":"MacBookAir","reqId":"req-7","req":{"method":"POST","url":"/api/batches/10/remit","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596692,"pid":41763,"hostname":"MacBookAir","reqId":"req-7","res":{"statusCode":200},"responseTime":1.636792000000014,"msg":"request completed"}
+{"level":30,"time":1791505596723,"pid":41763,"hostname":"MacBookAir","reqId":"req-8","req":{"method":"GET","url":"/api/users","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596725,"pid":41763,"hostname":"MacBookAir","reqId":"req-8","res":{"statusCode":403},"responseTime":1.057832999999846,"msg":"request completed"}
+{"level":30,"time":1791505596725,"pid":41763,"hostname":"MacBookAir","reqId":"req-9","req":{"method":"GET","url":"/api/backups","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596725,"pid":41763,"hostname":"MacBookAir","reqId":"req-9","res":{"statusCode":403},"responseTime":0.5587920000000395,"msg":"request completed"}
+{"level":30,"time":1791505596789,"pid":41763,"hostname":"MacBookAir","reqId":"req-a","req":{"method":"POST","url":"/api/invoices/684/void","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596793,"pid":41763,"hostname":"MacBookAir","reqId":"req-a","res":{"statusCode":200},"responseTime":3.591625000000022,"msg":"request completed"}
+{"level":30,"time":1791505596801,"pid":41763,"hostname":"MacBookAir","reqId":"req-b","req":{"method":"POST","url":"/api/invoices/685/adjust","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1791505596808,"pid":41763,"hostname":"MacBookAir","reqId":"req-b","err":{"type":"Error","message":"Adjustment cannot reduce invoice below allocated payments","stack":"Error: Adjustment cannot reduce invoice below allocated payments\n    at /Users/user/Desktop/Act4/source/server/app.ts:731:15\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at transaction (/Users/user/Desktop/Act4/source/server/db.ts:15:20)"},"msg":"Request failed"}
+{"level":30,"time":1791505596808,"pid":41763,"hostname":"MacBookAir","reqId":"req-b","res":{"statusCode":400},"responseTime":7.103749999999991,"msg":"request completed"}
+{"level":30,"time":1791505596811,"pid":41763,"hostname":"MacBookAir","reqId":"req-c","req":{"method":"POST","url":"/api/services/74/rate","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596815,"pid":41763,"hostname":"MacBookAir","reqId":"req-c","res":{"statusCode":200},"responseTime":3.6103750000002037,"msg":"request completed"}
+{"level":30,"time":1791505596853,"pid":41763,"hostname":"MacBookAir","reqId":"req-d","req":{"method":"POST","url":"/api/subscribers","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596853,"pid":41763,"hostname":"MacBookAir","reqId":"req-e","req":{"method":"POST","url":"/api/subscribers","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596853,"pid":41763,"hostname":"MacBookAir","reqId":"req-f","req":{"method":"POST","url":"/api/subscribers","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1791505596858,"pid":41763,"hostname":"MacBookAir","reqId":"req-d","res":{"statusCode":200},"responseTime":4.6242919999999685,"msg":"request completed"}
+{"level":30,"time":1791505596858,"pid":41763,"hostname":"MacBookAir","reqId":"req-f","res":{"statusCode":200},"responseTime":4.580584000000044,"msg":"request completed"}
+{"level":30,"time":1791505596859,"pid":41763,"hostname":"MacBookAir","reqId":"req-e","res":{"statusCode":200},"responseTime":5.404999999999973,"msg":"request completed"}
 
  Test Files  1 passed (1)
-      Tests  18 passed (18)
-   Start at  01:14:31
-   Duration  1.15s (tests 49%, import 42%, transform 8%)
+      Tests  20 passed (20)
+   Start at  08:26:35
+   Duration  1.32s (import 47%, tests 44%, transform 8%)

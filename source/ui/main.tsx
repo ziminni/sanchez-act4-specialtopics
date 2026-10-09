@@ -1772,7 +1772,7 @@ function App() {
               <form
                 onSubmit={(e) =>
                   submit(e, async (b) => {
-                    await api(
+                    const subscriber = await api(
                       modal === "subscriber-edit"
                         ? `/subscribers/${profile!.subscriber.id}/edit`
                         : "/subscribers",
@@ -1785,17 +1785,26 @@ function App() {
                       },
                     );
                     await done(
-                      "Subscriber registered. Open the profile to add services.",
+                      modal === "subscriber-edit"
+                        ? `Subscriber ${subscriber.account_no} updated.`
+                        : `Subscriber ${subscriber.account_no} registered. Open the profile to add services.`,
                     );
                   })
                 }
               >
                 <div className="form-grid">
-                  <Field label="Account number *">
+                  <Field
+                    label={
+                      modal === "subscriber-edit"
+                        ? "Account number *"
+                        : "Account number"
+                    }
+                  >
                     <input
                       name="accountNo"
-                      required
-                      placeholder="BCIS-00051"
+                      required={modal === "subscriber-edit"}
+                      disabled={modal !== "subscriber-edit"}
+                      placeholder="Automatically assigned when saved"
                       defaultValue={
                         modal === "subscriber-edit"
                           ? profile?.subscriber.account_no

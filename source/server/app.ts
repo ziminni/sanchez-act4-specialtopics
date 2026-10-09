@@ -214,7 +214,6 @@ export async function buildApp() {
   post("/subscribers", "subscriber.edit", async (req: any) => {
     const b = z
       .object({
-        accountNo: text,
         name: text,
         contact: z.string().max(50),
         address: text,
@@ -228,9 +227,8 @@ export async function buildApp() {
     return transaction(async (db) => {
       const r = (
         await db.query(
-          "INSERT INTO subscribers(account_no,name,contact,address,area_id,collector_id,billing_day,due_day,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
+          "INSERT INTO subscribers(name,contact,address,area_id,collector_id,billing_day,due_day,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
           [
-            b.accountNo,
             b.name,
             b.contact,
             b.address,
@@ -248,7 +246,7 @@ export async function buildApp() {
         "subscriber.create",
         "subscribers",
         r.id,
-        b,
+        r,
       );
       return r;
     });
