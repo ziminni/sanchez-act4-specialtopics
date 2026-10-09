@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "time": "2026-10-09T00:32:45.933Z",
+  "checks": [
+    "partial name matches with account/address/balance",
+    "keyboard selection",
+    "mouse selection",
+    "account-number search",
+    "no results and Escape",
+    "stale search response ignored",
+    "editing selection disables posting",
+    "stale balance response cannot re-enable posting"
+  ],
+  "paymentsPosted": 0
+}

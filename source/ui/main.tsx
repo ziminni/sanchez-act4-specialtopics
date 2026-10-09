@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useId } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
@@ -2881,53 +2881,194 @@ function App() {
     </div>
   );
 }
-function SubscriberPicker({ onSelect }: { onSelect?: (r: Row) => void }) {
-  const [query, setQuery] = useState(""),
-    [options, setOptions] = useState<Row[]>([]),
-    [chosen, setChosen] = useState<Row | null>(null);
+function SubscriberPicker({
+  onSelect,
+}: {
+  onSelect?: (r: Row | null) => void;
+}) {
+  const listId = useId();
+  const [query, setQuery] = useState("");
+  const [options, setOptions] = useState<Row[]>([]);
+  const [total, setTotal] = useState(0);
+  const [chosen, setChosen] = useState<Row | null>(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [active, setActive] = useState(-1);
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (query.length > 1 && !chosen)
-        api("/subscribers?search=" + encodeURIComponent(query))
-          .then((r) => setOptions(r.rows))
-          .catch(() => setOptions([]));
-    }, 200);
-    return () => clearTimeout(t);
-  }, [query, chosen]);
+    if (!open || chosen) return;
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    const timer = setTimeout(() => {
+      api("/subscribers?search=" + encodeURIComponent(query.trim()))
+        .then((result) => {
+          if (cancelled) return;
+          setOptions(result.rows.slice(0, 8));
+          setTotal(result.total);
+          setActive(-1);
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setOptions([]);
+            setError(e.message);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query, open, chosen]);
+  const select = (subscriber: Row) => {
+    setChosen(subscriber);
+    setQuery(`${subscriber.name} · ${subscriber.account_no}`);
+    setOpen(false);
+    setOptions([]);
+    setActive(-1);
+    onSelect?.(subscriber);
+  };
+  const edit = (value: string) => {
+    setQuery(value);
+    setChosen(null);
+    setOptions([]);
+    setActive(-1);
+    setError("");
+    setLoading(true);
+    setOpen(true);
+    onSelect?.(null);
+  };
   return (
-    <div>
+    <div
+      className="subscriber-picker"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          setOpen(false);
+      }}
+    >
       <Field label="Subscriber *">
         <input
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open && !chosen}
+          aria-controls={listId}
+          aria-activedescendant={
+            open && active >= 0 ? `${listId}-${options[active]?.id}` : undefined
+          }
+          autoComplete="off"
           placeholder="Search subscriber name or account…"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setChosen(null);
+          maxLength={100}
+          onFocus={() => {
+            if (!chosen) setOpen(true);
+          }}
+          onChange={(e) => edit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setOpen(false);
+              return;
+            }
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              if (chosen) return;
+              setOpen(true);
+              setActive((n) =>
+                e.key === "ArrowDown"
+                  ? Math.min(n + 1, options.length - 1)
+                  : Math.max(n - 1, 0),
+              );
+            }
+            if (e.key === "Enter" && open && !chosen) {
+              e.preventDefault();
+              const match = options[active >= 0 ? active : 0];
+              if (match && !loading) select(match);
+            }
           }}
           required
         />
       </Field>
       <input type="hidden" name="subscriberId" value={chosen?.id || ""} />
-      {!chosen && options.length > 0 && (
-        <div className="picker-results">
-          {options.slice(0, 6).map((r) => (
-            <button
-              type="button"
-              key={r.id}
-              onClick={() => {
-                setChosen(r);
-                setQuery(`${r.account_no} · ${r.name}`);
-                setOptions([]);
-                onSelect?.(r);
-              }}
-            >
-              {r.name}
-              <small>
-                {r.account_no} · {money(r.outstanding)}
-              </small>
-            </button>
-          ))}
+      {open && !chosen && (
+        <div className="picker-dropdown">
+          <div className="picker-caption">
+            {query.trim()
+              ? "Matching subscribers"
+              : "Choose a subscriber or type to search"}
+          </div>
+          {loading ? (
+            <div className="picker-message" role="status">
+              Searching subscribers…
+            </div>
+          ) : error ? (
+            <div className="picker-message red-text" role="alert">
+              {error}
+            </div>
+          ) : (
+            <>
+              <div
+                className="picker-results"
+                role="listbox"
+                id={listId}
+                aria-label="Matching subscribers"
+              >
+                {options.map((subscriber, index) => (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active === index}
+                    id={`${listId}-${subscriber.id}`}
+                    key={subscriber.id}
+                    className={active === index ? "highlighted" : ""}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setActive(index)}
+                    onClick={() => select(subscriber)}
+                  >
+                    <span className="picker-person">
+                      <strong>{subscriber.name}</strong>
+                      <small>{subscriber.account_no}</small>
+                      <small className="picker-address">
+                        {subscriber.address}
+                      </small>
+                    </span>
+                    <span className="picker-balance">
+                      <strong>{money(subscriber.outstanding)}</strong>
+                      <small>Outstanding</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {!options.length && (
+                <div className="picker-message" role="status">
+                  No subscribers found. Try another name or account number.
+                </div>
+              )}
+              {total > options.length && (
+                <div className="picker-caption">
+                  Showing {options.length} of {total} matches. Keep typing to
+                  narrow the list.
+                </div>
+              )}
+            </>
+          )}
         </div>
+      )}
+      {chosen ? (
+        <div className="picker-selection">
+          <span>
+            <Check size={14} /> Selected: <strong>{chosen.name}</strong>
+          </span>
+          <button type="button" onClick={() => edit("")}>
+            Change subscriber
+          </button>
+        </div>
+      ) : (
+        <p className="picker-help">
+          Type any part of a name or account number, then choose a match.
+        </p>
       )}
     </div>
   );
@@ -2946,7 +3087,27 @@ function PaymentForm({
   const [account, setAccount] = useState<Row | null>(null),
     [value, setValue] = useState(""),
     [key] = useState(crypto.randomUUID()),
-    [batches, setBatches] = useState<Row[]>([]);
+    [selectedSubscriber, setSelectedSubscriber] = useState<Row | null>(null),
+    [accountLoading, setAccountLoading] = useState(false),
+    [accountError, setAccountError] = useState("");
+  useEffect(() => {
+    if (!selectedSubscriber) return;
+    let cancelled = false;
+    setAccountLoading(true);
+    api("/subscribers/" + selectedSubscriber.id)
+      .then((result) => {
+        if (!cancelled) setAccount(result);
+      })
+      .catch((e) => {
+        if (!cancelled) setAccountError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setAccountLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubscriber, api]);
   let cents = 0;
   try {
     cents = centavos(value || "0");
@@ -2969,7 +3130,7 @@ function PaymentForm({
     <form
       onSubmit={(e) =>
         submit(e, async (b: Row) => {
-          if (!account)
+          if (!account || account.subscriber.id !== selectedSubscriber?.id)
             throw new Error("Select a subscriber from the search results");
           const r = await api("/payments", {
             subscriberId: account.subscriber.id,
@@ -2987,8 +3148,19 @@ function PaymentForm({
       <div className="payment-grid">
         <div>
           <SubscriberPicker
-            onSelect={(r) => api("/subscribers/" + r.id).then(setAccount)}
+            onSelect={(r) => {
+              setAccount(null);
+              setAccountError("");
+              setAccountLoading(Boolean(r));
+              setSelectedSubscriber(r);
+            }}
           />
+          {accountLoading && <p role="status">Loading subscriber balance…</p>}
+          {accountError && (
+            <div className="error" role="alert">
+              {accountError}
+            </div>
+          )}
           <div className="form-grid">
             <Field label="Amount (PHP) *">
               <input
@@ -3055,7 +3227,15 @@ function PaymentForm({
         <span>
           <ShieldCheck size={15} /> Transactional posting · Unique receipt
         </span>
-        <button className="primary" disabled={busy || !account || cents <= 0}>
+        <button
+          className="primary"
+          disabled={
+            busy ||
+            !account ||
+            account.subscriber.id !== selectedSubscriber?.id ||
+            cents <= 0
+          }
+        >
           {busy ? "Posting…" : "Post payment & view receipt"}
         </button>
       </div>

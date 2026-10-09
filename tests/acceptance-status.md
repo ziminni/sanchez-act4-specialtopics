@@ -48,3 +48,7 @@ No benchmark has established performance at 20,000 subscribers / 500,000 invoice
 ## Subscriber account-number update
 
 The registration API now generates subscriber numbers using a PostgreSQL sequence and preserves existing accounts. The expanded PostgreSQL suite passes 20 tests, including simultaneous registration, generated-number audit evidence, reserved seed numbers and identifiers longer than five digits. The registration form was checked in the browser without creating live demo records.
+
+## Payment subscriber autocomplete update
+
+The payment subscriber field now presents a dropdown of partial-name/account matches with address and outstanding balance. Browser verification passed for mouse and keyboard selection, account search, no-match feedback, dismissal, and out-of-order search/profile responses. Editing the chosen subscriber disables payment posting until the newly selected account loads. No payments were posted during these checks. Evidence: payment-search-evidence.json and screenshots/payment-subscriber-dropdown.png.

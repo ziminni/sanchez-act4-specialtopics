@@ -12,3 +12,5 @@
 | Browser-style blob download was not a reliable desktop save flow | Packaged Electron download path differed from browser automation | Dedicated narrow report IPC opens native Save dialog and writes only the selected report | Real Electron PDF save test passed |
 
 | Report calendar dates shifted one day | PostgreSQL DATE was parsed as local midnight then printed as UTC | Preserve DATE as YYYY-MM-DD text and format timestamps in Asia/Manila; pin API database timezone | Regenerated report sample and date parser regression |
+
+| Editing a payment search retained the prior subscriber | Search selection and loaded payment account were separate states, and old requests could finish after a new search | Clear the payment account immediately on edits, ignore stale search/profile responses, and require matching selected/account IDs before posting | scripts/payment-search-check.ts covers names, account numbers, keyboard/mouse selection, empty results and delayed responses without posting payments |

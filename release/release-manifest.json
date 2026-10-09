@@ -2,10 +2,10 @@
   "version": "1.0.0",
   "platform": "Windows x64",
   "installer": "release/installers/BCIS Billing Setup 1.0.0.exe",
-  "bytes": 122231658,
-  "sha256": "778b67318b47b1c0b67957f0c79abcf4391fe3e7a80363b8d19180eccd0b0dc3",
+  "bytes": 122232542,
+  "sha256": "fbee4b2ff5134d603d2e216097593af46638b72b53df1ddc1e3eb65b9bccbe5f",
   "signed": false,
-  "builtAt": "2026-10-09T00:28:54.149Z",
+  "builtAt": "2026-10-09T00:35:46.191Z",
   "validation": {
     "domainTests": 9,
     "postgresApiTests": 20,
@@ -15,6 +15,7 @@
     "windowsInstallation": "NOT_EXECUTED",
     "threePhysicalWindowsClients": "NOT_EXECUTED",
     "largeDatasetBenchmark": "NOT_EXECUTED",
-    "automaticSubscriberNumberForm": "PASS"
+    "automaticSubscriberNumberForm": "PASS",
+    "paymentSubscriberAutocomplete": "PASS"
   }
 }
