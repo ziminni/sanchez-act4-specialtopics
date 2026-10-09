@@ -215,13 +215,24 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       },
     });
     expect(created.statusCode).toBe(200);
+    const directory = await app.inject({
+      method: "GET",
+      url: "/api/users",
+      headers: h,
+    });
+    expect(directory.body).not.toContain("password_hash");
+    expect(directory.body).not.toContain("token_hash");
+    expect(
+      directory.json().find((u: any) => u.id === created.json().id),
+    ).toMatchObject({ active_sessions: 0, last_sign_in: null });
+
     expect(
       (
         await app.inject({
           method: "POST",
           url: `/api/users/${created.json().id}/active`,
           headers: h,
-          payload: { active: false },
+          payload: { active: false, reason: "Account access review" },
         })
       ).statusCode,
     ).toBe(200);

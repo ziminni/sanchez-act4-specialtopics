@@ -1,3 +1,4 @@
+import { UserManagement } from "./UserManagement";
 import { AdminDashboard } from "./AdminDashboard";
 import { SecurityAudit } from "./SecurityAudit";
 import React, { useState, useEffect, useCallback, useId } from "react";
@@ -1745,52 +1746,12 @@ function App() {
               )}
               {["Administration", "User Management"].includes(page) && (
                 <>
-                  <section className="panel">
-                    <div className="panel-head">
-                      <div>
-                        <h2>Team access</h2>
-                        <p>Permissions are enforced by the central server.</p>
-                      </div>
-                      <ShieldCheck size={20} />
-                    </div>
-                    <Table
-                      rows={rows}
-                      columns={[
-                        ["name", "Team member"],
-                        ["username", "Username"],
-                        ["roles", "Roles", (r) => r.roles.join(", ")],
-                        [
-                          "active",
-                          "Status",
-                          (r) => (
-                            <Badge value={r.active ? "ACTIVE" : "INACTIVE"} />
-                          ),
-                        ],
-                        [
-                          "action",
-                          "",
-                          (r) => (
-                            <button
-                              disabled={
-                                r.id === user.id ||
-                                (systemAdmin && r.roles.includes("Owner"))
-                              }
-                              onClick={() =>
-                                run(async () => {
-                                  await api(`/users/${r.id}/active`, {
-                                    active: !r.active,
-                                  });
-                                  await reload();
-                                })
-                              }
-                            >
-                              {r.active ? "Deactivate" : "Activate"}
-                            </button>
-                          ),
-                        ],
-                      ]}
-                    />
-                  </section>
+                  <UserManagement
+                    rows={rows}
+                    currentUser={user}
+                    request={api}
+                    reload={reload}
+                  />
                   {!systemAdmin && (
                     <div className="report-grid admin-cards">
                       <section className="panel report-card">
