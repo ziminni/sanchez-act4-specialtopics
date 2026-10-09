@@ -15,7 +15,8 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
   let app: Awaited<ReturnType<typeof buildApp>>,
     owner: number,
     token: string,
-    cashToken: string;
+    cashToken: string,
+    adminToken: string;
   let serial = 0;
   const headers = () => ({ authorization: `Bearer ${token}` });
   async function fixture(rates = [99900]) {
@@ -100,6 +101,7 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       for (const [name, role] of [
         ["testowner", "Owner"],
         ["testcash", "Cashier"],
+        ["testadmin", "Administrator"],
       ]) {
         const u = (
           await db.query(
@@ -114,7 +116,7 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
         if (role === "Owner") owner = u.id;
       }
     });
-    for (const name of ["testowner", "testcash"]) {
+    for (const name of ["testowner", "testcash", "testadmin"]) {
       const r = await app.inject({
         method: "POST",
         url: "/api/login",
@@ -122,12 +124,128 @@ describe.skipIf(!enabled)("PostgreSQL + authenticated API acceptance", () => {
       });
       expect(r.statusCode).toBe(200);
       if (name === "testowner") token = r.json().token;
+      else if (name === "testadmin") adminToken = r.json().token;
       else cashToken = r.json().token;
     }
   });
   afterAll(async () => {
     await app?.close();
     await pool.end();
+  });
+  it("Administrator has system-only access and cannot grant owner privileges", async () => {
+    const h = { authorization: `Bearer ${adminToken}` };
+    for (const url of [
+      "/system/dashboard",
+      "/users",
+      "/security-audit",
+      "/backups",
+      "/system/settings",
+    ]) {
+      expect(
+        (await app.inject({ method: "GET", url: "/api" + url, headers: h }))
+          .statusCode,
+      ).toBe(200);
+    }
+    for (const [method, url] of [
+      ["GET", "/dashboard"],
+      ["GET", "/subscribers"],
+      ["GET", "/invoices"],
+      ["GET", "/payments"],
+      ["GET", "/proofs"],
+      ["GET", "/batches"],
+      ["GET", "/receivables"],
+      ["GET", "/services"],
+      ["GET", "/audit"],
+      ["GET", "/settings"],
+      ["POST", "/subscribers"],
+      ["POST", "/payments"],
+      ["POST", "/settings"],
+      ["POST", "/plans"],
+    ] as const) {
+      expect(
+        (
+          await app.inject({
+            method,
+            url: "/api" + url,
+            headers: h,
+            ...(method === "POST" ? { payload: {} } : {}),
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await app.inject({ method: "GET", url: "/api/lookups", headers: h })
+      ).json(),
+    ).toEqual({ plans: [], areas: [], collectors: [] });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/users",
+          headers: h,
+          payload: {
+            username: "forbidden-owner",
+            name: "Forbidden",
+            password: "Test-only-password-2026",
+            role: "Owner",
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/users/${owner}/active`,
+          headers: h,
+          payload: { active: false },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: h,
+      payload: {
+        username: randomUUID(),
+        name: "Admin managed cashier",
+        password: "Test-only-password-2026",
+        role: "Cashier",
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/users/${created.json().id}/active`,
+          headers: h,
+          payload: { active: false },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/system/settings",
+          headers: h,
+          payload: { displayName: "BCIS Test", supportContact: "Test support" },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const events = (
+      await app.inject({
+        method: "GET",
+        url: "/api/security-audit",
+        headers: h,
+      })
+    ).json();
+    expect(events.some((e: any) => e.action === "auth.login")).toBe(true);
+    expect(
+      events.every((e: any) => /^(auth|user|backup|system)\./.test(e.action)),
+    ).toBe(true);
   });
   it("AT-01 exact payment creates receipt and balanced ledger", async () => {
     const sub = await fixture();

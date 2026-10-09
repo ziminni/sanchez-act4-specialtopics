@@ -234,6 +234,7 @@ function App() {
     [arDays, setArDays] = useState("0"),
     [arPlan, setArPlan] = useState(""),
     [arType, setArType] = useState("");
+  const systemAdmin = user?.roles?.includes("Administrator");
   const can = (p: string) =>
     user?.permissions?.includes("*") || user?.permissions?.includes(p);
   const run = async (fn: () => Promise<void>) => {
@@ -248,7 +249,7 @@ function App() {
     }
   };
   const routes: Record<string, string> = {
-    Dashboard: "/dashboard",
+    Dashboard: systemAdmin ? "/system/dashboard" : "/dashboard",
     Subscribers: `/subscribers?search=${encodeURIComponent(search)}&page=${pageNo}${area ? "&area=" + area : ""}`,
     Billing: `/invoices?page=${pageNo}&search=${encodeURIComponent(search)}`,
     Payments: `/payments?page=${pageNo}`,
@@ -262,6 +263,10 @@ function App() {
           ? "/suspension-candidates"
           : `/services?page=${pageNo}`,
     Administration: "/users",
+    "User Management": "/users",
+    "Security Audit": `/security-audit?page=${pageNo}`,
+    "Backup Restore": "/backups",
+    "System Settings": "/system/settings",
     "Audit Trail": `/audit?page=${pageNo}`,
     Reports: "/dashboard",
   };
@@ -409,11 +414,13 @@ function App() {
                 sessionToken = r.token;
                 const me = await api("/me");
                 setUser(me);
-                if (
-                  !me.permissions.includes("*") &&
-                  !me.permissions.includes("report.view")
-                )
-                  setPage("Services");
+                setPage(
+                  me.permissions.includes("*") ||
+                    me.permissions.includes("report.view") ||
+                    me.permissions.includes("system.view")
+                    ? "Dashboard"
+                    : "Services",
+                );
               })
             }
           >
@@ -445,19 +452,27 @@ function App() {
         </div>
       </div>
     );
-  const nav: [string, any, string, string][] = [
-    ["Dashboard", LayoutDashboard, "report.view", "WORKSPACE"],
-    ["Subscribers", Users, "subscriber.view", ""],
-    ["Billing", FileText, "subscriber.view", ""],
-    ["Payments", CreditCard, "subscriber.view", ""],
-    ["GCash Verification", ShieldCheck, "payment.verify", ""],
-    ["Collections", Truck, "collection.view", ""],
-    ["Receivables", ChartNoAxesCombined, "report.view", ""],
-    ["Services", Wifi, "service.view", ""],
-    ["Reports", ChartNoAxesCombined, "report.view", "MANAGEMENT"],
-    ["Administration", Settings, "user.manage", ""],
-    ["Audit Trail", Activity, "audit.view", ""],
-  ];
+  const nav: [string, any, string, string][] = systemAdmin
+    ? [
+        ["Dashboard", LayoutDashboard, "system.view", "SYSTEM"],
+        ["User Management", Users, "user.manage", ""],
+        ["Security Audit", ShieldCheck, "security.view", ""],
+        ["Backup Restore", ShieldCheck, "backup.restore", ""],
+        ["System Settings", Settings, "system.settings", ""],
+      ]
+    : [
+        ["Dashboard", LayoutDashboard, "report.view", "WORKSPACE"],
+        ["Subscribers", Users, "subscriber.view", ""],
+        ["Billing", FileText, "subscriber.view", ""],
+        ["Payments", CreditCard, "subscriber.view", ""],
+        ["GCash Verification", ShieldCheck, "payment.verify", ""],
+        ["Collections", Truck, "collection.view", ""],
+        ["Receivables", ChartNoAxesCombined, "report.view", ""],
+        ["Services", Wifi, "service.view", ""],
+        ["Reports", ChartNoAxesCombined, "report.view", "MANAGEMENT"],
+        ["Administration", Settings, "user.manage", ""],
+        ["Audit Trail", Activity, "audit.view", ""],
+      ];
   const rows = Array.isArray(data) ? data : data?.rows || [];
   return (
     <div className="app">
@@ -495,7 +510,11 @@ function App() {
         </nav>
         <div className="sidebar-bottom">
           <span className="live-dot" /> Central API connection
-          <small>All amounts in Philippine peso</small>
+          <small>
+            {systemAdmin
+              ? "System administration"
+              : "All amounts in Philippine peso"}
+          </small>
         </div>
         <div className="user">
           <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
@@ -537,13 +556,27 @@ function App() {
           <div className="page-heading">
             <div>
               <div className="eyebrow">BCIS OPERATIONS</div>
-              <h1>{page === "Dashboard" ? "Overview" : page}</h1>
+              <h1>
+                {page === "Dashboard"
+                  ? systemAdmin
+                    ? "System dashboard"
+                    : "Overview"
+                  : page}
+              </h1>
               <p>
                 {
                   (
                     {
-                      Dashboard:
-                        "Your billing and collection performance, at a glance.",
+                      Dashboard: systemAdmin
+                        ? "System health, user access, and backup status."
+                        : "Your billing and collection performance, at a glance.",
+                      "User Management": "Manage user accounts and access.",
+                      "Security Audit":
+                        "Review sign-ins and system administration activity.",
+                      "Backup Restore":
+                        "Create backups and follow the recovery procedure.",
+                      "System Settings":
+                        "Manage system identity and support information.",
                       Subscribers:
                         "Manage subscriber relationships and service accounts.",
                       Billing:
@@ -615,7 +648,7 @@ function App() {
                   <Plus size={17} /> New batch
                 </button>
               )}
-              {page === "Administration" && (
+              {["Administration", "User Management"].includes(page) && (
                 <button className="primary" onClick={() => setModal("user")}>
                   <Plus size={17} /> Add team member
                 </button>
@@ -643,7 +676,130 @@ function App() {
             <div className="loading">Connecting to your workspace…</div>
           ) : (
             <>
-              {page === "Dashboard" && (
+              {page === "Dashboard" && systemAdmin && (
+                <>
+                  <div className="kpis">
+                    {[
+                      ["User accounts", data.users],
+                      ["Active users", data.active_users],
+                      ["Active sessions", data.sessions],
+                      ["Backups", data.backups],
+                    ].map(([label, value]) => (
+                      <div className="kpi" key={label}>
+                        <div>{label}</div>
+                        <strong>{value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <section className="panel report-card">
+                    <h2>System status</h2>
+                    <p>Database: {data.database}</p>
+                    <p>
+                      Latest backup:{" "}
+                      {data.latestBackup
+                        ? `${data.latestBackup.filename} · ${data.latestBackup.status}`
+                        : "No backups recorded"}
+                    </p>
+                  </section>
+                </>
+              )}
+              {page === "Security Audit" && (
+                <section className="panel">
+                  <Table
+                    rows={rows}
+                    columns={[
+                      ["created_at", "Time", (r) => date(r.created_at)],
+                      ["actor", "User"],
+                      ["action", "Action"],
+                      ["entity", "Record type"],
+                      ["entity_id", "Record ID"],
+                    ]}
+                  />
+                  <button
+                    disabled={pageNo === 1}
+                    onClick={() => setPageNo(pageNo - 1)}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    disabled={rows.length < 50}
+                    onClick={() => setPageNo(pageNo + 1)}
+                  >
+                    Next
+                  </button>
+                </section>
+              )}
+              {page === "Backup Restore" && (
+                <section className="panel report-card">
+                  <h2>Backup and recovery</h2>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        const b = await api("/backups", {});
+                        setNotice(`Backup verified: ${b.name}`);
+                        await reload();
+                      })
+                    }
+                  >
+                    Create backup
+                  </button>
+                  <Table
+                    rows={rows}
+                    columns={[
+                      ["filename", "Backup"],
+                      ["status", "Status"],
+                    ]}
+                  />
+                  <h3>Restore a backup</h3>
+                  <p>
+                    Restore is performed offline on the server. Stop the
+                    application, restore a verified backup into an empty
+                    database and a new attachment folder, then update the server
+                    configuration and restart.
+                  </p>
+                  <p>Server command:</p>
+                  <code>
+                    npm run restore -- &lt;backup-directory&gt;
+                    &lt;empty-target-database-url&gt;
+                    &lt;new-attachment-directory&gt;
+                  </code>
+                </section>
+              )}
+              {page === "System Settings" && (
+                <section className="panel report-card">
+                  <h2>{data.displayName} system settings</h2>
+                  <form
+                    onSubmit={(e) =>
+                      submit(e, async (b) => {
+                        await api("/system/settings", b);
+                        setNotice("System settings saved.");
+                        await reload();
+                      })
+                    }
+                  >
+                    <Field label="System display name">
+                      <input
+                        name="displayName"
+                        required
+                        maxLength={200}
+                        defaultValue={data.displayName}
+                      />
+                    </Field>
+                    <Field label="Support contact">
+                      <input
+                        name="supportContact"
+                        maxLength={200}
+                        defaultValue={data.supportContact}
+                      />
+                    </Field>
+                    <button className="primary" disabled={busy}>
+                      Save system settings
+                    </button>
+                  </form>
+                </section>
+              )}
+              {page === "Dashboard" && !systemAdmin && (
                 <>
                   <div className="kpis">
                     {[
@@ -1634,7 +1790,7 @@ function App() {
                   </p>
                 </>
               )}
-              {page === "Administration" && (
+              {["Administration", "User Management"].includes(page) && (
                 <>
                   <section className="panel">
                     <div className="panel-head">
@@ -1662,7 +1818,10 @@ function App() {
                           "",
                           (r) => (
                             <button
-                              disabled={r.id === user.id}
+                              disabled={
+                                r.id === user.id ||
+                                (systemAdmin && r.roles.includes("Owner"))
+                              }
                               onClick={() =>
                                 run(async () => {
                                   await api(`/users/${r.id}/active`, {
@@ -1679,47 +1838,51 @@ function App() {
                       ]}
                     />
                   </section>
-                  <div className="report-grid admin-cards">
-                    <section className="panel report-card">
-                      <ShieldCheck size={25} />
-                      <h2>Backup & recovery</h2>
-                      <p>
-                        Create a PostgreSQL archive and attachment snapshot.
-                        Restore is an offline, administrator-controlled
-                        maintenance operation.
-                      </p>
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            const b = await api("/backups", {});
-                            setNotice(`Backup archive verified: ${b.name}`);
-                          })
-                        }
-                      >
-                        Create backup
-                      </button>
-                    </section>
-                    <section className="panel report-card">
-                      <Settings size={25} />
-                      <h2>Service policy</h2>
-                      <p>Configure overdue grace and suspension thresholds.</p>
-                      <button onClick={() => setModal("settings")}>
-                        Configure policy
-                      </button>
-                    </section>
-                    <section className="panel report-card">
-                      <Wifi size={25} />
-                      <h2>Service plans</h2>
-                      <p>
-                        {lookups.plans.length} plans configured. Billed rates
-                        remain preserved in invoice history.
-                      </p>
-                      <button onClick={() => setModal("plans")}>
-                        Manage plans
-                      </button>
-                    </section>
-                  </div>
+                  {!systemAdmin && (
+                    <div className="report-grid admin-cards">
+                      <section className="panel report-card">
+                        <ShieldCheck size={25} />
+                        <h2>Backup & recovery</h2>
+                        <p>
+                          Create a PostgreSQL archive and attachment snapshot.
+                          Restore is an offline, administrator-controlled
+                          maintenance operation.
+                        </p>
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            run(async () => {
+                              const b = await api("/backups", {});
+                              setNotice(`Backup archive verified: ${b.name}`);
+                            })
+                          }
+                        >
+                          Create backup
+                        </button>
+                      </section>
+                      <section className="panel report-card">
+                        <Settings size={25} />
+                        <h2>Service policy</h2>
+                        <p>
+                          Configure overdue grace and suspension thresholds.
+                        </p>
+                        <button onClick={() => setModal("settings")}>
+                          Configure policy
+                        </button>
+                      </section>
+                      <section className="panel report-card">
+                        <Wifi size={25} />
+                        <h2>Service plans</h2>
+                        <p>
+                          {lookups.plans.length} plans configured. Billed rates
+                          remain preserved in invoice history.
+                        </p>
+                        <button onClick={() => setModal("plans")}>
+                          Manage plans
+                        </button>
+                      </section>
+                    </div>
+                  )}
                 </>
               )}
             </>
@@ -2300,9 +2463,11 @@ function App() {
                       "Technician",
                       "Viewer",
                       "Owner",
-                    ].map((r) => (
-                      <option key={r}>{r}</option>
-                    ))}
+                    ]
+                      .filter((r) => !systemAdmin || r !== "Owner")
+                      .map((r) => (
+                        <option key={r}>{r}</option>
+                      ))}
                   </select>
                 </Field>
                 <button className="primary" disabled={busy}>

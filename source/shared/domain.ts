@@ -42,17 +42,11 @@ export const money = (c: number | string) =>
 export const rolePermissions: Record<string, string[]> = {
   Owner: ["*"],
   Administrator: [
-    "subscriber.view",
-    "subscriber.edit",
-    "billing.generate",
-    "payment.create",
-    "payment.verify",
-    "collection.view",
-    "report.view",
-    "report.export",
-    "service.manage",
-    "service.view",
-    "service.complete",
+    "system.view",
+    "user.manage",
+    "security.view",
+    "backup.restore",
+    "system.settings",
   ],
   Cashier: ["subscriber.view", "payment.create", "report.view"],
   "Collection Supervisor": [

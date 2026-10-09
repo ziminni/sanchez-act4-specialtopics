@@ -111,12 +111,14 @@ export async function buildApp() {
           user.id,
         ])
       ).rows.map((r) => r.role_id);
-      const permissions = (
+      let permissions = (
         await pool.query(
           "SELECT DISTINCT permission_id FROM role_permissions WHERE role_id=ANY($1::text[])",
           [roles],
         )
       ).rows.map((r) => r.permission_id);
+      if (roles.includes("Administrator"))
+        permissions = rolePermissions.Administrator;
       req.actor = { ...user, roles, permissions };
       if (
         permission &&
@@ -162,6 +164,9 @@ export async function buildApp() {
         "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '8 hours')",
         [tokenHash(token), u.id],
       );
+      await transaction((db) =>
+        audit(db, u.id, "auth.login", "users", u.id, { username: u.username }),
+      );
       return { token };
     },
   );
@@ -176,6 +181,8 @@ export async function buildApp() {
     const operational = req.actor.permissions.some((p: string) =>
       ["*", "subscriber.view", "service.view", "collection.view"].includes(p),
     );
+    if (req.actor.roles.includes("Administrator"))
+      return { plans: [], areas: [], collectors: [] };
     return {
       plans: (await pool.query("SELECT * FROM service_plans ORDER BY id")).rows,
       areas: (await pool.query("SELECT * FROM collection_areas ORDER BY name"))
@@ -1210,6 +1217,69 @@ export async function buildApp() {
       )
       .send(result);
   });
+  get("/system/dashboard", "system.view", async () => {
+    const counts = (
+      await pool.query(`SELECT
+      (SELECT count(*) FROM users) AS users,
+      (SELECT count(*) FROM users WHERE active) AS active_users,
+      (SELECT count(*) FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active) AS sessions,
+      (SELECT count(*) FROM backup_history) AS backups`)
+    ).rows[0];
+    return {
+      ...counts,
+      database: "Connected",
+      latestBackup:
+        (
+          await pool.query(
+            "SELECT filename,status FROM backup_history ORDER BY id DESC LIMIT 1",
+          )
+        ).rows[0] ?? null,
+    };
+  });
+  get("/security-audit", "security.view", async (req: any) => {
+    const page = z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1)
+      .parse(req.query.page);
+    return (
+      await pool.query(
+        "SELECT a.id,a.created_at,a.action,a.entity,a.entity_id,a.reason,u.name AS actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_id WHERE a.action LIKE 'auth.%' OR a.action LIKE 'user.%' OR a.action LIKE 'backup.%' OR a.action LIKE 'system.%' ORDER BY a.id DESC LIMIT 50 OFFSET $1",
+        [(page - 1) * 50],
+      )
+    ).rows;
+  });
+  get(
+    "/system/settings",
+    "system.settings",
+    async () =>
+      (
+        await pool.query(
+          "SELECT value FROM application_settings WHERE key='system'",
+        )
+      ).rows[0]?.value ?? { displayName: "BCIS", supportContact: "" },
+  );
+  post("/system/settings", "system.settings", async (req: any) => {
+    const b = z
+      .object({ displayName: text, supportContact: z.string().trim().max(200) })
+      .parse(req.body);
+    return transaction(async (db) => {
+      await db.query(
+        "INSERT INTO application_settings(key,value) VALUES('system',$1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [JSON.stringify(b)],
+      );
+      await audit(
+        db,
+        req.actor.id,
+        "system.settings.update",
+        "application_settings",
+        "system",
+        b,
+      );
+      return b;
+    });
+  });
   get("/audit", "audit.view", async (req: any) => {
     const q = z
       .object({ page: z.coerce.number().int().positive().default(1) })
@@ -1248,6 +1318,8 @@ export async function buildApp() {
         ]),
       })
       .parse(req.body);
+    if (req.actor.roles.includes("Administrator") && b.role === "Owner")
+      throw new Error("Only an owner can create another owner.");
     const hash = hashPassword(b.password);
     return transaction(async (db) => {
       const u = (
@@ -1270,6 +1342,16 @@ export async function buildApp() {
     if (n === req.actor.id && !b.active)
       throw new Error("You cannot deactivate your own account");
     return transaction(async (db) => {
+      if (
+        req.actor.roles.includes("Administrator") &&
+        (
+          await db.query(
+            "SELECT 1 FROM user_roles WHERE user_id=$1 AND role_id='Owner'",
+            [n],
+          )
+        ).rowCount
+      )
+        throw new Error("Only an owner can change another owner’s access.");
       await db.query("UPDATE users SET active=$1 WHERE id=$2", [b.active, n]);
       await db.query("DELETE FROM sessions WHERE user_id=$1", [n]);
       await audit(db, req.actor.id, "user.status", "users", n, b);
@@ -1278,10 +1360,10 @@ export async function buildApp() {
   });
   get(
     "/settings",
-    "user.manage",
+    "billing.settings",
     async () => (await pool.query("SELECT * FROM application_settings")).rows,
   );
-  post("/settings", "user.manage", async (req: any) => {
+  post("/settings", "billing.settings", async (req: any) => {
     const b = z
       .object({
         graceDays: z.number().int().min(0).max(90),

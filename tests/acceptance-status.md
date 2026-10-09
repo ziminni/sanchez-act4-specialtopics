@@ -60,3 +60,9 @@ New subscriber now requests a sequence-generated suggestion before opening the f
 ### Locked generated identifiers (supersedes editable account behavior)
 
 Subscriber account numbers, service account numbers and plan codes are generated before their forms open and shown in disabled gray fields. Server-side, actor-bound, single-use reservations preserve the displayed ID on save; client-supplied account numbers/codes are ignored. Editing subscribers or plans preserves existing identifiers. Receipt/invoice/batch IDs remain generated; external payment references and selection of existing batch IDs retain their existing meaning. All 20 database tests passed, covering displayed-ID preservation, override protection, edit protection, token reuse and wrong-kind rejection. `scripts/generated-id-check.ts` checks disabled gray fields in Chrome. Cancelled forms can leave numbering gaps.
+
+### System-only Administrator workspace
+
+Administrator permissions are now limited to system dashboard, user management, security audit, backup/recovery and system settings. Migration 005 replaces existing Administrator permissions; request authorization also enforces this boundary for sessions and combined role assignments. The security audit lists sign-ins and administration events without exposing financial audit payloads. Admin cannot create an Owner or change an Owner's active status. Existing business service policy remains separate from system settings. Restore remains the existing offline, empty-target recovery script; the Backup Restore page documents the procedure.
+
+Validation: TypeScript passed; 9 unit tests passed; 21 database integration tests passed including Admin allow/deny checks, staff management, system settings and privilege restrictions. Chrome verified the exact five navigation sections and working pages (`scripts/admin-workspace-check.ts`, screenshot `tests/screenshots/admin-system-dashboard.png`).

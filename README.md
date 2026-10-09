@@ -87,3 +87,9 @@ Set `BCIS_API_URL` on clients to the central API address. See docs/deployment-gu
 This is a tested laboratory implementation, not a claim of production certification. The Windows installer has been built; installation on three actual Windows clients still needs target-platform verification. Large-dataset performance has not been benchmarked; full-ledger views and report generation need streaming/pagination before claiming the PDF's maximum dataset targets. Richer collector routing and large-dataset streaming remain extension work. Manual allocation is disabled under the documented oldest-first policy. Restore is intentionally performed offline into a new database, not as an in-place browser action.
 
 Recommended-stack differences are documented: custom CSS/native forms instead of Tailwind/shadcn, SQL migrations/queries with an available Drizzle connection, PDFKit instead of pdfmake, and Vite/esbuild instead of electron-vite. Required Electron → API → PostgreSQL separation is preserved.
+
+### Administrator access
+
+The `admin` account now opens a system-only workspace with Dashboard, User Management, Security Audit, Backup Restore and System Settings. It cannot view or operate subscriber, billing, payment, collection, service or financial reporting modules. Use the appropriate operational role or Owner for business operations. Run `npm run migrate` when upgrading an existing database, then sign out and sign in again.
+
+System settings store the system display name and support contact. Backup creation is available in the workspace; restoration remains an offline server operation using `npm run restore -- <backup-directory> <empty-target-database-url> <new-attachment-directory>`. The restore script verifies checksums, requires an empty target, restores attachments and invalidates restored sessions. Administrators cannot create Owner accounts or change an Owner's active status.
